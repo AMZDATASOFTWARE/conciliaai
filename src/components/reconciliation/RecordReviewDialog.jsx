@@ -7,6 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import StatusBadge from '@/components/StatusBadge';
 import { Sparkles } from 'lucide-react';
+import { feedbackLoopService } from '@/lib/ai/feedbackLoopService';
+import { useToast } from '@/components/ui/use-toast';
 
 export default function RecordReviewDialog({ record, bankTxn, rule, costCenters, onSave, onClose }) {
   const [data, setData] = useState({
@@ -18,12 +20,20 @@ export default function RecordReviewDialog({ record, bankTxn, rule, costCenters,
     notes: record?.notes || '',
   });
   const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
   const set = (k, v) => setData((d) => ({ ...d, [k]: v }));
 
   const save = async (status) => {
     setSaving(true);
+    const original = { ...record };
     await onSave(record, { ...data, status });
     setSaving(false);
+    // Feedback Loop assíncrono — não bloqueia a UI
+    feedbackLoopService(original, data).then((res) => {
+      if (res?.learned) {
+        toast({ title: 'Correção salva', description: 'A IA do cliente aprendeu esta nova regra.' });
+      }
+    });
   };
 
   if (!record) return null;

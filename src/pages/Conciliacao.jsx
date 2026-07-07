@@ -6,10 +6,11 @@ import { useToast } from "@/components/ui/use-toast";
 import StatusBadge from "@/components/StatusBadge";
 import EmptyState from "@/components/EmptyState";
 import RecordDetail from "@/components/conciliacao/RecordDetail";
+import RecordReviewDialog from "@/components/reconciliation/RecordReviewDialog";
 import AuditReportDialog from "@/components/conciliacao/AuditReportDialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GitMerge, Play, Eye, Check, AlertTriangle, Sparkles, Brain } from "lucide-react";
+import { GitMerge, Play, Eye, Check, AlertTriangle, Sparkles, Brain, Pencil } from "lucide-react";
 
 export default function Conciliacao() {
   const { tenantId } = useTenant();
@@ -21,16 +22,20 @@ export default function Conciliacao() {
   const [aiRunning, setAiRunning] = useState(false);
   const [auditResult, setAuditResult] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [review, setReview] = useState(null);
+  const [costCenters, setCostCenters] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     const q = tenantId === "all" ? {} : { tenant_id: tenantId };
-    const [recs, rls] = await Promise.all([
+    const [recs, rls, ccs] = await Promise.all([
       base44.entities.ReconciledRecord.filter(q, "-reconciliation_date", 500),
       base44.entities.ReconciliationRule.filter(tenantId === "all" ? {} : { tenant_id: tenantId }, "-created_date", 500),
+      base44.entities.CostCenter.filter(q, "code", 500),
     ]);
     setRecords(recs);
     setRules(rls);
+    setCostCenters(ccs);
     setLoading(false);
   };
 
@@ -98,6 +103,12 @@ export default function Conciliacao() {
   const setStatus = async (rec, status) => {
     await base44.entities.ReconciledRecord.update(rec.id, { status });
     setDetail(null);
+    load();
+  };
+
+  const handleReviewSave = async (rec, data) => {
+    await base44.entities.ReconciledRecord.update(rec.id, data);
+    setReview(null);
     load();
   };
 
@@ -176,6 +187,9 @@ export default function Conciliacao() {
                       <Button size="sm" variant="ghost" onClick={() => setDetail(r)} className="text-slate-400 hover:text-blue-400" title="Ver raciocínio da IA">
                         <Eye className="w-4 h-4" />
                       </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setReview(r)} className="text-slate-400 hover:text-amber-400" title="Corrigir / revisar (a IA aprende com a correção)">
+                        <Pencil className="w-4 h-4" />
+                      </Button>
                       {r.status !== "reconciled" && (
                         <Button size="sm" variant="ghost" onClick={() => setStatus(r, "manual")} className="text-slate-400 hover:text-green-400" title="Aprovar manualmente">
                           <Check className="w-4 h-4" />
@@ -197,6 +211,16 @@ export default function Conciliacao() {
 
       {detail && (
         <RecordDetail record={detail} rule={rulesById[detail.matched_by_rule_id]} onClose={() => setDetail(null)} onSetStatus={setStatus} />
+      )}
+
+      {review && (
+        <RecordReviewDialog
+          record={review}
+          rule={rulesById[review.matched_by_rule_id]}
+          costCenters={costCenters}
+          onSave={handleReviewSave}
+          onClose={() => setReview(null)}
+        />
       )}
 
       <AuditReportDialog open={!!auditResult} onOpenChange={(o) => !o && setAuditResult(null)} result={auditResult} />
