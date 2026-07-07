@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 // Paginação no servidor via limit + skip do SDK.
 // Busca pageSize + 1 registros para detectar se existe próxima página
 // sem precisar carregar a contagem total (evita puxar milhares de linhas).
-export function usePaginatedEntity(entityName, query, sort, pageSize = 50) {
+export function usePaginatedEntity(entityName, query, sort, pageSize = 100) {
   const [page, setPage] = useState(1);
   const [items, setItems] = useState([]);
   const [hasMore, setHasMore] = useState(false);

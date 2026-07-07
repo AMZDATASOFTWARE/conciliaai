@@ -33,8 +33,8 @@ export default function Exportacao() {
     return q;
   }, [tenantId, from, to]);
 
-  // Prévia paginada no servidor (50 por página)
-  const { items: previewRecords, page, setPage, hasMore, loading, reload } = usePaginatedEntity("ReconciledRecord", query, "-reconciliation_date", 50);
+  // Prévia paginada no servidor (100 por página)
+  const { items: previewRecords, page, setPage, hasMore, loading, reload } = usePaginatedEntity("ReconciledRecord", query, "-reconciliation_date", 100);
 
   useEffect(() => {
     (async () => {

@@ -26,13 +26,13 @@ export default function Conciliacao() {
   const [detail, setDetail] = useState(null);
   const [review, setReview] = useState(null);
 
-  // Paginação no servidor: 50 registros por página, filtros de tenant e status na query
+  // Paginação no servidor: 100 registros por página, filtros de tenant e status na query
   const query = useMemo(() => {
     const q = tenantId === "all" ? {} : { tenant_id: tenantId };
     if (statusFilter !== "all") q.status = statusFilter;
     return q;
   }, [tenantId, statusFilter]);
-  const { items: records, page, setPage, hasMore, loading, reload } = usePaginatedEntity("ReconciledRecord", query, "-reconciliation_date", 50);
+  const { items: records, page, setPage, hasMore, loading, reload } = usePaginatedEntity("ReconciledRecord", query, "-reconciliation_date", 100);
 
   const loadLookups = async () => {
     const q = tenantId === "all" ? {} : { tenant_id: tenantId };
