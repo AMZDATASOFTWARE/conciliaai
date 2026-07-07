@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useTenant } from '@/lib/TenantContext';
-import { parseOfx } from '@/lib/ofx';
+import { importOfxFile, importCashFile } from '@/lib/parsers/importService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import StatusBadge from '@/components/StatusBadge';
@@ -36,7 +36,7 @@ function UploadCard({ icon: Icon, title, description, accept, sources, onImport,
           <span className="text-sm text-muted-foreground">{busy ? 'Importando...' : 'Clique para selecionar o arquivo'}</span>
           <input type="file" accept={accept} className="hidden" disabled={!sourceId || busy} onChange={handleFile} />
         </label>
-        {result && <p className="text-sm text-green-400">{result}</p>}
+        {result && <p className={`text-sm ${result.startsWith('Erro') ? 'text-red-400' : 'text-green-400'}`}>{result}</p>}
       </CardContent>
     </Card>
   );
@@ -61,44 +61,23 @@ export default function Imports() {
   useEffect(() => { load(); }, [load]);
 
   const importOfx = async (file, sourceId) => {
-    const text = await file.text();
-    const txns = parseOfx(text);
-    if (txns.length === 0) { setOfxResult('Nenhuma transação encontrada no arquivo.'); return; }
-    const now = new Date().toISOString();
-    await base44.entities.BankTransaction.bulkCreate(
-      txns.map((t) => ({ ...t, tenant_id: tenantId, source_id: sourceId, status: 'pending', imported_at: now }))
-    );
-    setOfxResult(`${txns.length} transações bancárias importadas com sucesso.`);
-    load();
+    try {
+      const { imported, duplicates } = await importOfxFile({ file, tenantId, sourceId });
+      setOfxResult(`${imported} transações bancárias importadas.${duplicates > 0 ? ` ${duplicates} duplicadas ignoradas (já existiam).` : ''}`);
+      load();
+    } catch (err) {
+      setOfxResult('Erro: ' + err.message);
+    }
   };
 
   const importCash = async (file, sourceId) => {
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    const res = await base44.integrations.Core.ExtractDataFromUploadedFile({
-      file_url,
-      json_schema: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            date: { type: 'string', description: 'Data da transação no formato YYYY-MM-DD' },
-            amount: { type: 'number', description: 'Valor da transação' },
-            payment_method: { type: 'string', description: 'Forma de pagamento: PIX, Dinheiro, Cartão, etc.' },
-            ticket: { type: 'string', description: 'Número do ticket, se houver' },
-            description: { type: 'string', description: 'Descrição da transação' },
-            operator: { type: 'string', description: 'Operador do caixa, se houver' },
-          },
-        },
-      },
-    });
-    if (res.status !== 'success' || !res.output) { setCashResult('Erro ao extrair dados: ' + (res.details || 'formato não reconhecido')); return; }
-    const rows = Array.isArray(res.output) ? res.output : [res.output];
-    const now = new Date().toISOString();
-    await base44.entities.CashTransaction.bulkCreate(
-      rows.filter((r) => r.date && r.amount).map((r) => ({ ...r, tenant_id: tenantId, source_id: sourceId, status: 'pending', imported_at: now }))
-    );
-    setCashResult(`${rows.length} transações de caixa importadas com sucesso.`);
-    load();
+    try {
+      const { imported, skipped } = await importCashFile({ file, tenantId, sourceId });
+      setCashResult(`${imported} lançamentos de caixa importados.${skipped > 0 ? ` ${skipped} linhas ignoradas (sem data/valor válidos).` : ''}`);
+      load();
+    } catch (err) {
+      setCashResult('Erro: ' + err.message);
+    }
   };
 
   if (tenantId === 'all') {

@@ -39,7 +39,7 @@ export function runReconciliation({ bankTxs, cashTxs, rules }) {
 
   for (const bt of bankTxs) {
     const cash = cashTxs.find(
-      (ct) => !usedCash.has(ct.id) && ct.date === bt.date && Math.abs(ct.amount - bt.amount) < 0.01
+      (ct) => !usedCash.has(ct.id) && ct.date === bt.date && Math.abs(Math.abs(ct.amount) - Math.abs(bt.amount)) < 0.01
     );
     const rule = matchRule(bt.description, rules);
     if (rule) ruleHits[rule.id] = (ruleHits[rule.id] || 0) + 1;
@@ -73,7 +73,7 @@ export function runReconciliation({ bankTxs, cashTxs, rules }) {
       responsible: rule ? rule.map_to : cash ? cash.operator || "" : "",
       cost_center_id: rule ? rule.cost_center_id || "" : "",
       payment_method: cash ? cash.payment_method || "" : "",
-      amount: bt.type === "debit" ? -bt.amount : bt.amount,
+      amount: bt.type === "debit" ? -Math.abs(bt.amount) : Math.abs(bt.amount),
       description: bt.description || "",
     });
   }

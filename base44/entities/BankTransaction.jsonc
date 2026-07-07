@@ -4,11 +4,11 @@
   "properties": {
     "tenant_id": {
       "type": "string",
-      "description": "ID do Tenant"
+      "description": "FK Tenant"
     },
     "source_id": {
       "type": "string",
-      "description": "ID da TransactionSource"
+      "description": "FK TransactionSource"
     },
     "date": {
       "type": "string",
@@ -16,7 +16,7 @@
     },
     "amount": {
       "type": "number",
-      "description": "Valor (negativo para d\u00e9bito)"
+      "description": "Valor assinado: d\u00e9bitos negativos, cr\u00e9ditos positivos"
     },
     "description": {
       "type": "string",
@@ -31,7 +31,12 @@
     },
     "transaction_id_ofx": {
       "type": "string",
-      "description": "FITID \u00fanico do OFX"
+      "description": "FITID do OFX"
+    },
+    "raw_data": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Dados originais crus do extrato (bloco OFX completo) para contexto da IA"
     },
     "status": {
       "type": "string",
@@ -50,6 +55,7 @@
   "required": [
     "tenant_id",
     "date",
-    "amount"
+    "amount",
+    "type"
   ]
 }

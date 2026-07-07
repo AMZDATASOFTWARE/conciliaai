@@ -4,11 +4,11 @@
   "properties": {
     "tenant_id": {
       "type": "string",
-      "description": "ID do Tenant"
+      "description": "FK Tenant"
     },
     "name": {
       "type": "string",
-      "description": "Nome da fonte, ex: OFX Stone"
+      "description": "Ex: OFX Stone, Planilha de Caixa"
     },
     "type": {
       "type": "string",
@@ -16,14 +16,18 @@
         "ofx",
         "spreadsheet",
         "api"
-      ],
-      "default": "ofx"
+      ]
     },
     "bank_name": {
       "type": "string"
     },
     "description": {
       "type": "string"
+    },
+    "column_mapping": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Template De/Para de leitura do arquivo desta fonte. Chaves core_* apontam para o nome da coluna no arquivo do cliente. Ex: {\"core_date\": \"Data Fechamento\", \"core_amount\": \"Valor Total\", \"core_description\": \"Observa\u00e7\u00f5es\"}"
     }
   },
   "required": [

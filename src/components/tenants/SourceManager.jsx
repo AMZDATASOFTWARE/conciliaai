@@ -3,7 +3,8 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus } from 'lucide-react';
+import { Plus, Settings2 } from 'lucide-react';
+import ColumnMappingEditor from './ColumnMappingEditor';
 
 const TYPE_LABELS = { ofx: 'OFX', spreadsheet: 'Planilha', api: 'API' };
 
@@ -12,6 +13,7 @@ export default function SourceManager({ tenantId }) {
   const [name, setName] = useState('');
   const [type, setType] = useState('ofx');
   const [saving, setSaving] = useState(false);
+  const [mappingId, setMappingId] = useState(null);
 
   const load = useCallback(async () => {
     setItems(await base44.entities.TransactionSource.filter({ tenant_id: tenantId }, 'name', 100));
@@ -45,9 +47,21 @@ export default function SourceManager({ tenantId }) {
       <div className="space-y-1.5 max-h-64 overflow-y-auto">
         {items.length === 0 && <p className="text-sm text-muted-foreground py-2">Nenhuma fonte cadastrada.</p>}
         {items.map((item) => (
-          <div key={item.id} className="flex items-center justify-between bg-background rounded-lg px-3 py-2 border border-border">
-            <span className="text-sm font-medium">{item.name}</span>
-            <span className="text-xs text-muted-foreground bg-accent px-2 py-0.5 rounded">{TYPE_LABELS[item.type] || item.type}</span>
+          <div key={item.id} className="space-y-2">
+            <div className="flex items-center justify-between bg-background rounded-lg px-3 py-2 border border-border">
+              <span className="text-sm font-medium">{item.name}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground bg-accent px-2 py-0.5 rounded">{TYPE_LABELS[item.type] || item.type}</span>
+                {item.type === 'spreadsheet' && (
+                  <Button variant="ghost" size="icon" className="h-7 w-7" title="Mapeamento de colunas" onClick={() => setMappingId(mappingId === item.id ? null : item.id)}>
+                    <Settings2 className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+            {mappingId === item.id && (
+              <ColumnMappingEditor source={item} onSaved={() => { setMappingId(null); load(); }} />
+            )}
           </div>
         ))}
       </div>
