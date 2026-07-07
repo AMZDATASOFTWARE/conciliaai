@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useTenant } from "@/lib/TenantContext";
 import { parseOFX } from "@/lib/reconcile";
 import { useToast } from "@/components/ui/use-toast";
+import { usePaginatedEntity } from "@/hooks/usePaginatedEntity";
+import DataPagination from "@/components/DataPagination";
 import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Landmark, Wallet, Upload, FileWarning } from "lucide-react";
@@ -19,18 +21,11 @@ export default function Importacoes() {
   const ofxRef = useRef();
   const cashRef = useRef();
   const [busy, setBusy] = useState(null);
-  const [recent, setRecent] = useState({ bank: [], cash: [] });
 
-  const loadRecent = async () => {
-    const q = tenantId === "all" ? {} : { tenant_id: tenantId };
-    const [b, c] = await Promise.all([
-      base44.entities.BankTransaction.filter(q, "-imported_at", 8),
-      base44.entities.CashTransaction.filter(q, "-imported_at", 8),
-    ]);
-    setRecent({ bank: b, cash: c });
-  };
-
-  useEffect(() => { loadRecent(); }, [tenantId]);
+  // Listagens paginadas no servidor (10 por página)
+  const query = useMemo(() => (tenantId === "all" ? {} : { tenant_id: tenantId }), [tenantId]);
+  const bank = usePaginatedEntity("BankTransaction", query, "-imported_at", 10);
+  const cash = usePaginatedEntity("CashTransaction", query, "-imported_at", 10);
 
   const requireTenant = () => {
     if (tenantId === "all") {
@@ -57,7 +52,7 @@ export default function Importacoes() {
     );
     toast({ title: "OFX importado", description: `${txs.length} transações bancárias importadas.` });
     setBusy(null);
-    loadRecent();
+    bank.reload();
   };
 
   const importCash = async (file) => {
@@ -99,7 +94,7 @@ export default function Importacoes() {
     );
     toast({ title: "Planilha importada", description: `${txs.length} lançamentos de caixa importados.` });
     setBusy(null);
-    loadRecent();
+    cash.reload();
   };
 
   const tenantName = tenants.find((t) => t.id === tenantId)?.name;
@@ -145,16 +140,18 @@ export default function Importacoes() {
 
       <div className="grid md:grid-cols-2 gap-4">
         {[
-          { title: "Últimas transações bancárias", list: recent.bank, empty: "Nenhum OFX importado ainda." },
-          { title: "Últimos lançamentos de caixa", list: recent.cash, empty: "Nenhuma planilha importada ainda." },
-        ].map(({ title, list, empty }) => (
+          { title: "Últimas transações bancárias", pager: bank, empty: "Nenhum OFX importado ainda." },
+          { title: "Últimos lançamentos de caixa", pager: cash, empty: "Nenhuma planilha importada ainda." },
+        ].map(({ title, pager, empty }) => (
           <div key={title} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
             <p className="text-sm font-medium text-slate-300 px-5 py-3.5 border-b border-slate-700">{title}</p>
-            {list.length === 0 ? (
+            {pager.loading ? (
+              <div className="flex justify-center py-10"><div className="w-6 h-6 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin" /></div>
+            ) : pager.items.length === 0 ? (
               <EmptyState icon={FileWarning} title={empty} />
             ) : (
               <div className="divide-y divide-slate-700/60">
-                {list.map((t) => (
+                {pager.items.map((t) => (
                   <div key={t.id} className="flex items-center justify-between px-5 py-2.5 text-sm">
                     <div className="min-w-0">
                       <p className="text-slate-300 truncate">{t.description || t.payment_method || "—"}</p>
@@ -167,6 +164,7 @@ export default function Importacoes() {
                 ))}
               </div>
             )}
+            <DataPagination page={pager.page} hasMore={pager.hasMore} onPageChange={pager.setPage} className="border-t border-slate-700" />
           </div>
         ))}
       </div>

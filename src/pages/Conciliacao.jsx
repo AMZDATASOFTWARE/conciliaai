@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useTenant } from "@/lib/TenantContext";
 import { runReconciliation } from "@/lib/reconcile";
 import { useToast } from "@/components/ui/use-toast";
+import { usePaginatedEntity } from "@/hooks/usePaginatedEntity";
+import DataPagination from "@/components/DataPagination";
 import StatusBadge from "@/components/StatusBadge";
 import EmptyState from "@/components/EmptyState";
 import RecordDetail from "@/components/conciliacao/RecordDetail";
@@ -15,31 +17,34 @@ import { GitMerge, Play, Eye, Check, AlertTriangle, Sparkles, Brain, Pencil } fr
 export default function Conciliacao() {
   const { tenantId } = useTenant();
   const { toast } = useToast();
-  const [records, setRecords] = useState([]);
   const [rules, setRules] = useState([]);
+  const [costCenters, setCostCenters] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [running, setRunning] = useState(false);
   const [aiRunning, setAiRunning] = useState(false);
   const [auditResult, setAuditResult] = useState(null);
   const [detail, setDetail] = useState(null);
   const [review, setReview] = useState(null);
-  const [costCenters, setCostCenters] = useState([]);
-  const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  // Paginação no servidor: 50 registros por página, filtros de tenant e status na query
+  const query = useMemo(() => {
     const q = tenantId === "all" ? {} : { tenant_id: tenantId };
-    const [recs, rls, ccs] = await Promise.all([
-      base44.entities.ReconciledRecord.filter(q, "-reconciliation_date", 500),
-      base44.entities.ReconciliationRule.filter(tenantId === "all" ? {} : { tenant_id: tenantId }, "-created_date", 500),
+    if (statusFilter !== "all") q.status = statusFilter;
+    return q;
+  }, [tenantId, statusFilter]);
+  const { items: records, page, setPage, hasMore, loading, reload } = usePaginatedEntity("ReconciledRecord", query, "-reconciliation_date", 50);
+
+  const loadLookups = async () => {
+    const q = tenantId === "all" ? {} : { tenant_id: tenantId };
+    const [rls, ccs] = await Promise.all([
+      base44.entities.ReconciliationRule.filter(q, "-created_date", 500),
       base44.entities.CostCenter.filter(q, "code", 500),
     ]);
-    setRecords(recs);
     setRules(rls);
     setCostCenters(ccs);
-    setLoading(false);
   };
 
-  useEffect(() => { setLoading(true); load(); }, [tenantId]);
+  useEffect(() => { loadLookups(); }, [tenantId]);
 
   const run = async () => {
     if (tenantId === "all") {
@@ -79,7 +84,8 @@ export default function Conciliacao() {
     if (hitUpdates.length) await base44.entities.ReconciliationRule.bulkUpdate(hitUpdates);
     toast({ title: "Conciliação concluída", description: `${newRecords.length} registros gerados.` });
     setRunning(false);
-    load();
+    loadLookups();
+    reload();
   };
 
   const runAiSquad = async () => {
@@ -93,7 +99,7 @@ export default function Conciliacao() {
       if (response.data.error) throw new Error(response.data.error);
       setAuditResult(response.data);
       toast({ title: "Squad IA concluído", description: `${response.data.reconciled} conciliadas, ${response.data.divergent} divergentes.` });
-      load();
+      reload();
     } catch (err) {
       toast({ title: "Erro no Squad IA", description: err.message, variant: "destructive" });
     }
@@ -103,16 +109,15 @@ export default function Conciliacao() {
   const setStatus = async (rec, status) => {
     await base44.entities.ReconciledRecord.update(rec.id, { status });
     setDetail(null);
-    load();
+    reload();
   };
 
   const handleReviewSave = async (rec, data) => {
     await base44.entities.ReconciledRecord.update(rec.id, data);
     setReview(null);
-    load();
+    reload();
   };
 
-  const filtered = statusFilter === "all" ? records : records.filter((r) => r.status === statusFilter);
   const rulesById = Object.fromEntries(rules.map((r) => [r.id, r]));
 
   return (
@@ -134,18 +139,18 @@ export default function Conciliacao() {
 
       <Tabs value={statusFilter} onValueChange={setStatusFilter}>
         <TabsList className="bg-slate-800">
-          <TabsTrigger value="all">Todos ({records.length})</TabsTrigger>
-          <TabsTrigger value="reconciled">Conciliados ({records.filter((r) => r.status === "reconciled").length})</TabsTrigger>
-          <TabsTrigger value="pending">Pendentes ({records.filter((r) => r.status === "pending").length})</TabsTrigger>
-          <TabsTrigger value="divergent">Divergentes ({records.filter((r) => r.status === "divergent").length})</TabsTrigger>
-          <TabsTrigger value="manual">Manuais ({records.filter((r) => r.status === "manual").length})</TabsTrigger>
+          <TabsTrigger value="all">Todos</TabsTrigger>
+          <TabsTrigger value="reconciled">Conciliados</TabsTrigger>
+          <TabsTrigger value="pending">Pendentes</TabsTrigger>
+          <TabsTrigger value="divergent">Divergentes</TabsTrigger>
+          <TabsTrigger value="manual">Manuais</TabsTrigger>
         </TabsList>
       </Tabs>
 
       <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin" /></div>
-        ) : filtered.length === 0 ? (
+        ) : records.length === 0 ? (
           <EmptyState icon={GitMerge} title="Nenhum registro" description="Importe arquivos e execute a conciliação para gerar registros." />
         ) : (
           <table className="w-full text-sm">
@@ -162,7 +167,7 @@ export default function Conciliacao() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/60">
-              {filtered.map((r) => (
+              {records.map((r) => (
                 <tr key={r.id} className="hover:bg-slate-700/20">
                   <td className="px-5 py-2.5 text-slate-400 whitespace-nowrap">{r.reconciliation_date}</td>
                   <td className="px-5 py-2.5 text-slate-300 max-w-[240px] truncate">{r.description}</td>
@@ -207,6 +212,7 @@ export default function Conciliacao() {
             </tbody>
           </table>
         )}
+        <DataPagination page={page} hasMore={hasMore} onPageChange={setPage} className="border-t border-slate-700" />
       </div>
 
       {detail && (
