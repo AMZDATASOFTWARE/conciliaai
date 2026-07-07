@@ -34,11 +34,11 @@ export async function importOfxFile({ file, tenantId, sourceId }) {
   return { imported: fresh.length, duplicates: txns.length - fresh.length };
 }
 
-export async function importCashFile({ file, tenantId, sourceId }) {
-  const source = await base44.entities.TransactionSource.get(sourceId);
-  const mapping = source?.column_mapping;
+// O mapeamento agora chega diretamente no payload (definido pelo usuário no modal de upload),
+// não sendo mais buscado na TransactionSource.
+export async function importCashFile({ file, tenantId, sourceId, mapping }) {
   if (!mapping || !mapping.core_date || !mapping.core_amount) {
-    throw new Error('Esta fonte não possui mapeamento de colunas configurado. Configure o De/Para (Data e Valor são obrigatórios) na aba Clientes.');
+    throw new Error('Mapeamento de colunas não informado. Selecione as colunas de Data e Valor no momento do upload.');
   }
 
   let rows;

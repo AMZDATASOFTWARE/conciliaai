@@ -2,6 +2,9 @@ import React, { useMemo, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useTenant } from "@/lib/TenantContext";
 import { parseOFX } from "@/lib/reconcile";
+import { parseCSV } from "@/lib/parsers/csv";
+import { mapRows } from "@/lib/parsers/dynamicParser";
+import ColumnMappingModal from "@/components/imports/ColumnMappingModal";
 import { useToast } from "@/components/ui/use-toast";
 import { usePaginatedEntity } from "@/hooks/usePaginatedEntity";
 import DataPagination from "@/components/DataPagination";
@@ -21,6 +24,7 @@ export default function Importacoes() {
   const ofxRef = useRef();
   const cashRef = useRef();
   const [busy, setBusy] = useState(null);
+  const [pendingCash, setPendingCash] = useState(null); // { rows, headers } aguardando mapeamento
 
   // Listagens paginadas no servidor (10 por página)
   const query = useMemo(() => (tenantId === "all" ? {} : { tenant_id: tenantId }), [tenantId]);
@@ -55,46 +59,51 @@ export default function Importacoes() {
     bank.reload();
   };
 
-  const importCash = async (file) => {
+  // Passo 1: lê apenas os cabeçalhos/linhas do arquivo e abre o modal de mapeamento
+  const startCashImport = async (file) => {
     if (!file) return;
     setBusy("cash");
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    const result = await base44.integrations.Core.ExtractDataFromUploadedFile({
-      file_url,
-      json_schema: {
-        type: "object",
-        properties: {
-          transactions: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                date: { type: "string", description: "Data no formato YYYY-MM-DD" },
-                amount: { type: "number", description: "Valor absoluto" },
-                payment_method: { type: "string", description: "PIX, Dinheiro, Cartão etc." },
-                ticket: { type: "string" },
-                description: { type: "string" },
-                operator: { type: "string" },
-              },
-            },
-          },
-        },
-      },
-    });
-    const txs = result.status === "success" ? (result.output?.transactions || []) : [];
-    if (txs.length === 0) {
-      toast({ title: "Falha na extração", description: result.details || "Não foi possível extrair lançamentos da planilha.", variant: "destructive" });
-      setBusy(null);
-      return;
+    try {
+      let rows;
+      if (file.name.toLowerCase().endsWith(".csv") || file.type === "text/csv") {
+        rows = parseCSV(await file.text());
+      } else {
+        // XLS/XLSX: extração preservando todas as colunas originais
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        const res = await base44.integrations.Core.ExtractDataFromUploadedFile({
+          file_url,
+          json_schema: { type: "array", items: { type: "object", additionalProperties: true } },
+        });
+        if (res.status !== "success" || !res.output) throw new Error(res.details || "Não foi possível ler a planilha.");
+        rows = Array.isArray(res.output) ? res.output : [res.output];
+      }
+      if (!rows.length) throw new Error("Nenhuma linha de dados encontrada no arquivo.");
+      setPendingCash({ rows, headers: Object.keys(rows[0]) });
+    } catch (e) {
+      toast({ title: "Falha na leitura do arquivo", description: e.message, variant: "destructive" });
     }
-    const source = await getOrCreateSource(tenantId, "spreadsheet", "Planilha de Caixa");
-    const now = new Date().toISOString();
-    await base44.entities.CashTransaction.bulkCreate(
-      txs.filter((t) => t.date && t.amount).map((t) => ({ ...t, tenant_id: tenantId, source_id: source.id, status: "pending", imported_at: now }))
-    );
-    toast({ title: "Planilha importada", description: `${txs.length} lançamentos de caixa importados.` });
     setBusy(null);
-    cash.reload();
+  };
+
+  // Passo 2: usuário confirmou o De/Para no modal → salva as CashTransactions
+  const confirmCashImport = async (mapping) => {
+    const { rows } = pendingCash;
+    setPendingCash(null);
+    setBusy("cash");
+    try {
+      const coreMapping = { core_date: mapping.date, core_amount: mapping.amount, core_description: mapping.description };
+      const records = mapRows(rows, coreMapping);
+      const source = await getOrCreateSource(tenantId, "spreadsheet", "Planilha de Caixa");
+      const now = new Date().toISOString();
+      await base44.entities.CashTransaction.bulkCreate(
+        records.map((r) => ({ ...r, tenant_id: tenantId, source_id: source.id, status: "pending", imported_at: now }))
+      );
+      toast({ title: "Planilha importada", description: `${records.length} lançamentos de caixa importados.` });
+      cash.reload();
+    } catch (e) {
+      toast({ title: "Falha na importação", description: e.message, variant: "destructive" });
+    }
+    setBusy(null);
   };
 
   const tenantName = tenants.find((t) => t.id === tenantId)?.name;
@@ -128,15 +137,22 @@ export default function Importacoes() {
             <div className="w-9 h-9 rounded-lg bg-green-600/15 flex items-center justify-center"><Wallet className="w-4.5 h-4.5 text-green-400" /></div>
             <div>
               <p className="font-medium text-slate-200">Fechamento de caixa (planilha)</p>
-              <p className="text-xs text-slate-500">Excel, CSV ou PDF — extração automática por IA</p>
+              <p className="text-xs text-slate-500">CSV ou Excel — mapeie as colunas no momento do upload</p>
             </div>
           </div>
-          <input ref={cashRef} type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={(e) => { importCash(e.target.files[0]); e.target.value = ""; }} />
+          <input ref={cashRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { startCashImport(e.target.files[0]); e.target.value = ""; }} />
           <Button disabled={busy === "cash"} onClick={() => requireTenant() && cashRef.current.click()} className="w-full bg-green-600 hover:bg-green-500">
-            <Upload className="w-4 h-4 mr-2" /> {busy === "cash" ? "Extraindo dados..." : "Enviar planilha de caixa"}
+            <Upload className="w-4 h-4 mr-2" /> {busy === "cash" ? "Lendo arquivo..." : "Enviar planilha de caixa"}
           </Button>
         </div>
       </div>
+
+      <ColumnMappingModal
+        isOpen={!!pendingCash}
+        onClose={() => setPendingCash(null)}
+        fileHeaders={pendingCash?.headers || []}
+        onConfirm={confirmCashImport}
+      />
 
       <div className="grid md:grid-cols-2 gap-4">
         {[
