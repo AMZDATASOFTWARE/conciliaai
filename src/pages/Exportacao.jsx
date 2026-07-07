@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useTenant } from "@/lib/TenantContext";
-import { buildContaAzulCSV } from "@/lib/reconcile";
+import { downloadContaAzulCSV } from "@/lib/contaAzulExportService";
 import { useToast } from "@/components/ui/use-toast";
 import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -39,21 +39,18 @@ export default function Exportacao() {
     return true;
   });
 
-  const exportCSV = async () => {
+  const handleExport = async () => {
     if (filtered.length === 0) {
       toast({ title: "Nada a exportar", description: "Nenhum registro conciliado no período selecionado.", variant: "destructive" });
       return;
     }
-    const ccById = Object.fromEntries(costCenters.map((c) => [c.id, c]));
-    const csv = buildContaAzulCSV(filtered, ccById);
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const name = tenantId === "all" ? "todos" : (tenants.find((t) => t.id === tenantId)?.name || "cliente").toLowerCase().replace(/\s+/g, "-");
-    a.href = url;
-    a.download = `conta-azul-${name}-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // Populate: cruza cost_center_id -> nome do CostCenter para a coluna "Centro de Custo"
+    const ccNameById = Object.fromEntries(costCenters.map((c) => [c.id, c.name]));
+    const populated = filtered.map((r) => ({ ...r, cost_center_name: ccNameById[r.cost_center_id] || "" }));
+    const tenantName = tenantId === "all" ? "Todos" : (tenants.find((t) => t.id === tenantId)?.name || "Cliente").replace(/\s+/g, "_");
+    const refDate = from || new Date().toISOString().slice(0, 10);
+    const mesAno = `${refDate.slice(5, 7)}-${refDate.slice(0, 4)}`;
+    downloadContaAzulCSV(populated, `Exportacao_${tenantName}_${mesAno}.csv`);
     const now = new Date().toISOString();
     await base44.entities.ReconciledRecord.bulkUpdate(filtered.map((r) => ({ id: r.id, exported_at: now })));
     toast({ title: "CSV exportado", description: `${filtered.length} registros no formato estrito Conta Azul (10 colunas).` });
@@ -81,8 +78,8 @@ export default function Exportacao() {
         <div className="flex-1" />
         <div className="text-right">
           <p className="text-xs text-slate-500 mb-1.5">{filtered.length} registros prontos para exportar</p>
-          <Button onClick={exportCSV} className="bg-green-600 hover:bg-green-500">
-            <Download className="w-4 h-4 mr-2" /> Exportar CSV Conta Azul
+          <Button onClick={handleExport} className="bg-green-600 hover:bg-green-500">
+            <Download className="w-4 h-4 mr-2" /> Exportar Lote para Conta Azul
           </Button>
         </div>
       </div>
