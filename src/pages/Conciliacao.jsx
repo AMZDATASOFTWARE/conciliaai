@@ -6,9 +6,10 @@ import { useToast } from "@/components/ui/use-toast";
 import StatusBadge from "@/components/StatusBadge";
 import EmptyState from "@/components/EmptyState";
 import RecordDetail from "@/components/conciliacao/RecordDetail";
+import AgentRunDialog from "@/components/conciliacao/AgentRunDialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GitMerge, Play, Eye, Check, AlertTriangle } from "lucide-react";
+import { GitMerge, Play, Eye, Check, AlertTriangle, Sparkles } from "lucide-react";
 
 export default function Conciliacao() {
   const { tenantId } = useTenant();
@@ -19,6 +20,7 @@ export default function Conciliacao() {
   const [running, setRunning] = useState(false);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [squadOpen, setSquadOpen] = useState(false);
 
   const load = async () => {
     const q = tenantId === "all" ? {} : { tenant_id: tenantId };
@@ -90,9 +92,23 @@ export default function Conciliacao() {
           <h1 className="text-2xl font-bold tracking-tight">Conciliação</h1>
           <p className="text-sm text-slate-400 mt-1">Revisão dos registros conciliados com rastreabilidade da IA</p>
         </div>
-        <Button onClick={run} disabled={running} className="bg-blue-600 hover:bg-blue-500">
-          <Play className="w-4 h-4 mr-2" /> {running ? "Conciliando..." : "Executar conciliação"}
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={run} disabled={running} variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">
+            <Play className="w-4 h-4 mr-2" /> {running ? "Conciliando..." : "Conciliação por regras"}
+          </Button>
+          <Button
+            onClick={() => {
+              if (tenantId === "all") {
+                toast({ title: "Selecione um cliente", description: "Cada squad de IA é exclusivo de um tenant. Escolha o cliente ativo na barra lateral.", variant: "destructive" });
+                return;
+              }
+              setSquadOpen(true);
+            }}
+            className="bg-blue-600 hover:bg-blue-500"
+          >
+            <Sparkles className="w-4 h-4 mr-2" /> Executar Conciliação IA (Squad Dedicado)
+          </Button>
+        </div>
       </div>
 
       <Tabs value={statusFilter} onValueChange={setStatusFilter}>
@@ -119,6 +135,7 @@ export default function Conciliacao() {
                 <th className="px-5 py-3 font-medium text-right">Valor</th>
                 <th className="px-5 py-3 font-medium">Categoria</th>
                 <th className="px-5 py-3 font-medium">Responsável</th>
+                <th className="px-5 py-3 font-medium">Justificativa IA</th>
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium text-right">Ações</th>
               </tr>
@@ -133,6 +150,7 @@ export default function Conciliacao() {
                   </td>
                   <td className="px-5 py-2.5 text-slate-400">{r.category || "—"}</td>
                   <td className="px-5 py-2.5 text-slate-400">{r.responsible || "—"}</td>
+                  <td className="px-5 py-2.5 text-slate-400 max-w-[260px] truncate" title={r.ai_reasoning || ""}>{r.ai_reasoning || "—"}</td>
                   <td className="px-5 py-2.5"><StatusBadge status={r.status} /></td>
                   <td className="px-5 py-2.5">
                     <div className="flex justify-end gap-1">
@@ -160,6 +178,10 @@ export default function Conciliacao() {
 
       {detail && (
         <RecordDetail record={detail} rule={rulesById[detail.matched_by_rule_id]} onClose={() => setDetail(null)} onSetStatus={setStatus} />
+      )}
+
+      {squadOpen && (
+        <AgentRunDialog tenantId={tenantId} onClose={() => { setSquadOpen(false); load(); }} />
       )}
     </div>
   );
