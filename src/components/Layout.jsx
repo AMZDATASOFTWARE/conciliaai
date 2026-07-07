@@ -7,11 +7,11 @@ import { LayoutDashboard, Building2, Upload, GitMerge, BookOpen, Brain, FileDown
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/tenants', label: 'Clientes', icon: Building2 },
-  { to: '/imports', label: 'Importações', icon: Upload },
-  { to: '/reconciliation', label: 'Conciliação', icon: GitMerge },
-  { to: '/rules', label: 'Dicionário de Regras', icon: BookOpen },
-  { to: '/memory', label: 'Memória Contextual', icon: Brain },
-  { to: '/export', label: 'Exportação Conta Azul', icon: FileDown },
+  { to: '/importacoes', label: 'Importações', icon: Upload },
+  { to: '/conciliacao', label: 'Conciliação', icon: GitMerge },
+  { to: '/dicionario', label: 'Dicionário de Regras', icon: BookOpen },
+  { to: '/memoria', label: 'Memória Contextual', icon: Brain },
+  { to: '/exportacao', label: 'Exportação Conta Azul', icon: FileDown },
 ];
 
 function TenantSelector() {
