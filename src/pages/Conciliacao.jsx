@@ -6,9 +6,10 @@ import { useToast } from "@/components/ui/use-toast";
 import StatusBadge from "@/components/StatusBadge";
 import EmptyState from "@/components/EmptyState";
 import RecordDetail from "@/components/conciliacao/RecordDetail";
+import AuditReportDialog from "@/components/conciliacao/AuditReportDialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GitMerge, Play, Eye, Check, AlertTriangle } from "lucide-react";
+import { GitMerge, Play, Eye, Check, AlertTriangle, Sparkles, Brain } from "lucide-react";
 
 export default function Conciliacao() {
   const { tenantId } = useTenant();
@@ -17,6 +18,8 @@ export default function Conciliacao() {
   const [rules, setRules] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [running, setRunning] = useState(false);
+  const [aiRunning, setAiRunning] = useState(false);
+  const [auditResult, setAuditResult] = useState(null);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -74,6 +77,24 @@ export default function Conciliacao() {
     load();
   };
 
+  const runAiSquad = async () => {
+    if (tenantId === "all") {
+      toast({ title: "Selecione um cliente", description: "O Squad de IA é isolado por cliente. Escolha o tenant ativo na barra lateral.", variant: "destructive" });
+      return;
+    }
+    setAiRunning(true);
+    try {
+      const response = await base44.functions.invoke("runAiReconciliation", { tenantId });
+      if (response.data.error) throw new Error(response.data.error);
+      setAuditResult(response.data);
+      toast({ title: "Squad IA concluído", description: `${response.data.reconciled} conciliadas, ${response.data.divergent} divergentes.` });
+      load();
+    } catch (err) {
+      toast({ title: "Erro no Squad IA", description: err.message, variant: "destructive" });
+    }
+    setAiRunning(false);
+  };
+
   const setStatus = async (rec, status) => {
     await base44.entities.ReconciledRecord.update(rec.id, { status });
     setDetail(null);
@@ -90,9 +111,14 @@ export default function Conciliacao() {
           <h1 className="text-2xl font-bold tracking-tight">Conciliação</h1>
           <p className="text-sm text-slate-400 mt-1">Revisão dos registros conciliados com rastreabilidade da IA</p>
         </div>
-        <Button onClick={run} disabled={running} className="bg-blue-600 hover:bg-blue-500">
-          <Play className="w-4 h-4 mr-2" /> {running ? "Conciliando..." : "Executar conciliação"}
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={run} disabled={running || aiRunning} variant="outline" className="border-slate-600">
+            <Play className="w-4 h-4 mr-2" /> {running ? "Conciliando..." : "Conciliação por regras"}
+          </Button>
+          <Button onClick={runAiSquad} disabled={running || aiRunning} className="bg-blue-600 hover:bg-blue-500">
+            <Sparkles className="w-4 h-4 mr-2" /> {aiRunning ? "Squad em execução (Analista → Supervisor → Diretor)..." : "Executar Conciliação IA (Squad Hierárquico)"}
+          </Button>
+        </div>
       </div>
 
       <Tabs value={statusFilter} onValueChange={setStatusFilter}>
@@ -119,6 +145,7 @@ export default function Conciliacao() {
                 <th className="px-5 py-3 font-medium text-right">Valor</th>
                 <th className="px-5 py-3 font-medium">Categoria</th>
                 <th className="px-5 py-3 font-medium">Responsável</th>
+                <th className="px-5 py-3 font-medium">Raciocínio IA</th>
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium text-right">Ações</th>
               </tr>
@@ -133,6 +160,16 @@ export default function Conciliacao() {
                   </td>
                   <td className="px-5 py-2.5 text-slate-400">{r.category || "—"}</td>
                   <td className="px-5 py-2.5 text-slate-400">{r.responsible || "—"}</td>
+                  <td className="px-5 py-2.5 max-w-[220px]">
+                    {r.ai_reasoning ? (
+                      <span className="flex items-center gap-1.5 text-xs text-blue-300/80 cursor-help" title={r.ai_reasoning}>
+                        <Brain className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+                        <span className="truncate">{r.ai_reasoning}</span>
+                      </span>
+                    ) : (
+                      <span className="text-slate-600 text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-5 py-2.5"><StatusBadge status={r.status} /></td>
                   <td className="px-5 py-2.5">
                     <div className="flex justify-end gap-1">
@@ -161,6 +198,8 @@ export default function Conciliacao() {
       {detail && (
         <RecordDetail record={detail} rule={rulesById[detail.matched_by_rule_id]} onClose={() => setDetail(null)} onSetStatus={setStatus} />
       )}
+
+      <AuditReportDialog open={!!auditResult} onOpenChange={(o) => !o && setAuditResult(null)} result={auditResult} />
     </div>
   );
 }
