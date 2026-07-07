@@ -30,19 +30,22 @@ const escapeCell = (v) => {
   return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 };
 
-// records: ReconciledRecords já populados com `cost_center_name` (nome, não ID)
+// records: ReconciledRecords já populados (merge manual) com os dados originais
+// das transações: original_description, original_amount, original_date e cost_center_name.
 export function generateContaAzulCSV(records) {
   const rows = records.map((r) => {
-    const date = formatDateBR(r.reconciliation_date);
+    const date = formatDateBR(r.original_date || r.reconciliation_date);
+    const description = r.original_description || r.description || "";
+    const amount = r.original_amount ?? r.amount ?? 0;
     return [
       date, // Data de Competência
       date, // Data de Vencimento
       date, // Data de Pagamento
-      formatValueBR(r.amount),
+      formatValueBR(amount),
       r.category || "",
-      r.description || "",
+      description,
       r.responsible || r.map_to || "",
-      "", // CNPJ/CPF em branco por padrão
+      r.document || "", // CNPJ/CPF Cliente/Fornecedor
       r.cost_center_name || "",
       r.notes || r.ai_reasoning || r.payment_method || "",
     ].map(escapeCell).join(";");
