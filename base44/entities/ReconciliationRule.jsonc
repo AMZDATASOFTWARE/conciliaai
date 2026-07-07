@@ -1,0 +1,44 @@
+{
+  "name": "ReconciliationRule",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "ID do Tenant"
+    },
+    "keyword": {
+      "type": "string",
+      "description": "Palavra-chave a buscar na descri\u00e7\u00e3o, ex: WILSON DE CASSIO"
+    },
+    "map_to": {
+      "type": "string",
+      "description": "Nome mapeado, ex: Jhennifer"
+    },
+    "category": {
+      "type": "string",
+      "description": "Categoria cont\u00e1bil, ex: Di\u00e1rias"
+    },
+    "cost_center_id": {
+      "type": "string",
+      "description": "ID do CostCenter"
+    },
+    "is_pf": {
+      "type": "boolean",
+      "default": false,
+      "description": "Pessoa f\u00edsica"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "match_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Contador de uso da regra"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "keyword"
+  ]
+}

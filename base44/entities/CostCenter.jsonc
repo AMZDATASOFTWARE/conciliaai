@@ -1,0 +1,30 @@
+{
+  "name": "CostCenter",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "ID do Tenant"
+    },
+    "code": {
+      "type": "string",
+      "description": "C\u00f3digo, ex: 002"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome, ex: TDPATIO"
+    },
+    "description": {
+      "type": "string"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "tenant_id",
+    "code",
+    "name"
+  ]
+}

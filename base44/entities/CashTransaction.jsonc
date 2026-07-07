@@ -1,0 +1,54 @@
+{
+  "name": "CashTransaction",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "ID do Tenant"
+    },
+    "source_id": {
+      "type": "string",
+      "description": "ID da TransactionSource"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "amount": {
+      "type": "number"
+    },
+    "payment_method": {
+      "type": "string",
+      "description": "PIX, Dinheiro, Cart\u00e3o, etc."
+    },
+    "ticket": {
+      "type": "string",
+      "description": "N\u00famero do ticket"
+    },
+    "description": {
+      "type": "string"
+    },
+    "operator": {
+      "type": "string",
+      "description": "Operador do caixa"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "reconciled",
+        "divergent"
+      ],
+      "default": "pending"
+    },
+    "imported_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "date",
+    "amount"
+  ]
+}

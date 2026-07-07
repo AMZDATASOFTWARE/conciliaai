@@ -1,0 +1,33 @@
+{
+  "name": "Tenant",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome do cliente do BPO"
+    },
+    "cnpj": {
+      "type": "string",
+      "description": "CNPJ do cliente"
+    },
+    "bank_name": {
+      "type": "string",
+      "description": "Banco principal"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

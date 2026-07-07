@@ -1,0 +1,74 @@
+{
+  "name": "ReconciledRecord",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "ID do Tenant"
+    },
+    "bank_transaction_id": {
+      "type": "string",
+      "description": "FK BankTransaction (nullable)"
+    },
+    "cash_transaction_id": {
+      "type": "string",
+      "description": "FK CashTransaction (nullable)"
+    },
+    "reconciliation_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "reconciled",
+        "pending",
+        "divergent",
+        "manual"
+      ],
+      "default": "pending"
+    },
+    "ai_classification": {
+      "type": "string",
+      "description": "Classifica\u00e7\u00e3o atribu\u00edda pela IA"
+    },
+    "ai_reasoning": {
+      "type": "string",
+      "description": "Explica\u00e7\u00e3o de por que a IA tomou essa decis\u00e3o"
+    },
+    "matched_by_rule_id": {
+      "type": "string",
+      "description": "FK ReconciliationRule usada no match"
+    },
+    "category": {
+      "type": "string"
+    },
+    "responsible": {
+      "type": "string",
+      "description": "Cliente/Fornecedor respons\u00e1vel"
+    },
+    "document": {
+      "type": "string",
+      "description": "CNPJ/CPF do Cliente/Fornecedor"
+    },
+    "cost_center_id": {
+      "type": "string",
+      "description": "FK CostCenter"
+    },
+    "payment_method": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es"
+    },
+    "exported_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando foi exportado no CSV"
+    }
+  },
+  "required": [
+    "tenant_id"
+  ]
+}

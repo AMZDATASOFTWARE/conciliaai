@@ -6,7 +6,15 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
-// Add page imports here
+import { TenantProvider } from '@/lib/TenantContext';
+import Layout from '@/components/Layout';
+import Dashboard from '@/pages/Dashboard';
+import Tenants from '@/pages/Tenants';
+import Importacoes from '@/pages/Importacoes';
+import Conciliacao from '@/pages/Conciliacao';
+import Dicionario from '@/pages/Dicionario';
+import Memoria from '@/pages/Memoria';
+import Exportacao from '@/pages/Exportacao';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -33,10 +41,20 @@ const AuthenticatedApp = () => {
 
   // Render the main app
   return (
-    <Routes>
-      {/* Add your page Route elements here */}
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
+    <TenantProvider>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/tenants" element={<Tenants />} />
+          <Route path="/importacoes" element={<Importacoes />} />
+          <Route path="/conciliacao" element={<Conciliacao />} />
+          <Route path="/dicionario" element={<Dicionario />} />
+          <Route path="/memoria" element={<Memoria />} />
+          <Route path="/exportacao" element={<Exportacao />} />
+        </Route>
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    </TenantProvider>
   );
 };
 

@@ -1,0 +1,30 @@
+{
+  "name": "TenantMemoryContext",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "ID do Tenant"
+    },
+    "context_type": {
+      "type": "string",
+      "enum": [
+        "text",
+        "file_reference"
+      ],
+      "default": "text"
+    },
+    "content": {
+      "type": "string",
+      "description": "Resumos, transcri\u00e7\u00f5es de \u00e1udios, diretrizes do cliente"
+    },
+    "source_description": {
+      "type": "string",
+      "description": "Origem: \u00e1udio WhatsApp, reuni\u00e3o, e-mail, etc."
+    }
+  },
+  "required": [
+    "tenant_id",
+    "content"
+  ]
+}

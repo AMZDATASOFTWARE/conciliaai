@@ -1,0 +1,55 @@
+{
+  "name": "BankTransaction",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "ID do Tenant"
+    },
+    "source_id": {
+      "type": "string",
+      "description": "ID da TransactionSource"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Valor (negativo para d\u00e9bito)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o original do OFX"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "debit",
+        "credit"
+      ]
+    },
+    "transaction_id_ofx": {
+      "type": "string",
+      "description": "FITID \u00fanico do OFX"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "reconciled",
+        "divergent"
+      ],
+      "default": "pending"
+    },
+    "imported_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "date",
+    "amount"
+  ]
+}
