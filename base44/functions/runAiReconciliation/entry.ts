@@ -17,12 +17,18 @@ Deno.serve(async (req) => {
     if (!tenantId) return Response.json({ error: 'tenantId é obrigatório' }, { status: 400 });
 
     // ===== Contexto isolado do tenant =====
-    const [bankTxns, cashTxns, rules, memory] = await Promise.all([
+    const [bankTxns, cashTxns, rules, memory, squadAgents] = await Promise.all([
       base44.entities.BankTransaction.filter({ tenant_id: tenantId, status: 'pending' }, 'date', 150),
       base44.entities.CashTransaction.filter({ tenant_id: tenantId, status: 'pending' }, 'date', 300),
       base44.entities.ReconciliationRule.filter({ tenant_id: tenantId, is_active: true }, '-match_count', 200),
       base44.entities.TenantMemoryContext.filter({ tenant_id: tenantId }, '-created_date', 50),
+      base44.entities.TenantAgent.filter({ tenant_id: tenantId }),
     ]);
+
+    // Squad dedicado do tenant: cada nível da pirâmide executa as instruções da SUA instância
+    const squad = Object.fromEntries(squadAgents.map((a) => [a.role, a]));
+    const squadInstruction = (role) =>
+      squad[role] ? `[AGENTE DEDICADO: ${squad[role].agent_name}]\nINSTRUÇÕES DO SQUAD: ${squad[role].instructions}\n\n` : '';
 
     if (bankTxns.length === 0) {
       return Response.json({ analyzed: 0, reconciled: 0, divergent: 0, report: 'Nenhuma transação bancária pendente para este cliente.' });
@@ -36,7 +42,7 @@ Deno.serve(async (req) => {
 
     // ===== NÍVEL 1: Agente Analista Financeiro (O Processador) =====
     const analystResult = await base44.integrations.Core.InvokeLLM({
-      prompt: `Você é o AGENTE ANALISTA FINANCEIRO de um BPO financeiro. Sua missão é APENAS SUGERIR correspondências (matches) entre transações bancárias e lançamentos de caixa de UM ÚNICO cliente. Você NÃO grava nada no banco.
+      prompt: `${squadInstruction('analista')}Você é o AGENTE ANALISTA FINANCEIRO de um BPO financeiro. Sua missão é APENAS SUGERIR correspondências (matches) entre transações bancárias e lançamentos de caixa de UM ÚNICO cliente. Você NÃO grava nada no banco.
 
 SKILLS ATIVAS: interpretação de JSON (raw_data), busca semântica/fuzzy matching (nomes parecidos, abreviações, apelidos como "Wilson" vs "Jhennifer"), extração de dados (tickets e datas dentro de descrições longas) e operações matemáticas (a soma deve bater NO CENTAVO — compare valores absolutos, débitos bancários vêm negativos).
 
@@ -77,7 +83,7 @@ ${JSON.stringify(cashList)}`,
 
     // ===== NÍVEL 2: Agente Supervisor de BPO (O Validador) =====
     const supervisorResult = await base44.integrations.Core.InvokeLLM({
-      prompt: `Você é o AGENTE SUPERVISOR DE BPO. Você recebeu sugestões de match do Agente Analista e deve VALIDÁLAS ou REJEITÁ-LAS antes da gravação no banco, consultando a MEMÓRIA do cliente (RAG) e o MOTOR DE REGRAS (dicionário De/Para).
+      prompt: `${squadInstruction('supervisor')}Você é o AGENTE SUPERVISOR DE BPO. Você recebeu sugestões de match do Agente Analista e deve VALIDÁLAS ou REJEITÁ-LAS antes da gravação no banco, consultando a MEMÓRIA do cliente (RAG) e o MOTOR DE REGRAS (dicionário De/Para).
 
 SKILLS ATIVAS: consulta à memória do cliente, motor de regras lógicas, fluxo de aprovação/roteamento e geração de justificativa técnica.
 
@@ -162,7 +168,7 @@ Para cada transação bancária avaliada retorne uma decisão. "approved"=true s
 
     // ===== NÍVEL 3: Agente Diretor Financeiro (O Estrategista) =====
     const report = await base44.integrations.Core.InvokeLLM({
-      prompt: `Você é o AGENTE DIRETOR FINANCEIRO de um BPO. Analise o lote de conciliações abaixo e gere um RESUMO DE AUDITORIA EXECUTIVO em Markdown (títulos, bullets, negrito).
+      prompt: `${squadInstruction('diretor')}Você é o AGENTE DIRETOR FINANCEIRO de um BPO. Analise o lote de conciliações abaixo e gere um RESUMO DE AUDITORIA EXECUTIVO em Markdown (títulos, bullets, negrito).
 
 SKILLS ATIVAS: análise financeira e de risco, sumarização e geração de relatórios executivos.
 

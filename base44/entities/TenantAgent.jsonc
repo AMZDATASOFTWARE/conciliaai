@@ -1,0 +1,52 @@
+{
+  "name": "TenantAgent",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "FK Tenant - dono exclusivo deste agente"
+    },
+    "agent_name": {
+      "type": "string",
+      "description": "Nome namespaced, ex: analista_financeiro_{tenant_id}"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "analista",
+        "supervisor",
+        "diretor"
+      ],
+      "description": "N\u00edvel na pir\u00e2mide cognitiva"
+    },
+    "instructions": {
+      "type": "string",
+      "description": "Instru\u00e7\u00f5es dedicadas deste agente (edit\u00e1veis por tenant)"
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Skills habilitadas para este agente"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "provisioning",
+        "active",
+        "error"
+      ],
+      "default": "active"
+    },
+    "provisioned_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "agent_name",
+    "role"
+  ]
+}

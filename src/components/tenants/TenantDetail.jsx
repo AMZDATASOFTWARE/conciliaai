@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2 } from "lucide-react";
+import SquadManager from "@/components/tenants/SquadManager";
 
 export default function TenantDetail({ tenant, open, onClose }) {
   const [costCenters, setCostCenters] = useState([]);
@@ -50,6 +51,7 @@ export default function TenantDetail({ tenant, open, onClose }) {
           <TabsList className="bg-slate-800">
             <TabsTrigger value="cc">Centros de Custo</TabsTrigger>
             <TabsTrigger value="src">Fontes de Transação</TabsTrigger>
+            <TabsTrigger value="squad">Squad IA</TabsTrigger>
           </TabsList>
           <TabsContent value="cc" className="space-y-3 mt-4">
             <form onSubmit={addCC} className="flex gap-2">
@@ -93,6 +95,9 @@ export default function TenantDetail({ tenant, open, onClose }) {
                 </div>
               ))}
             </div>
+          </TabsContent>
+          <TabsContent value="squad" className="mt-4">
+            <SquadManager tenantId={tenant.id} />
           </TabsContent>
         </Tabs>
       </DialogContent>

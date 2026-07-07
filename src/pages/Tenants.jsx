@@ -6,17 +6,40 @@ import EmptyState from "@/components/EmptyState";
 import TenantForm from "@/components/tenants/TenantForm";
 import TenantDetail from "@/components/tenants/TenantDetail";
 import { Button } from "@/components/ui/button";
-import { Building2, Plus, Settings2, Pencil } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/use-toast";
+import { Building2, Plus, Settings2, Pencil, Loader2 } from "lucide-react";
 
 export default function Tenants() {
   const { tenants, refreshTenants } = useTenant();
+  const { toast } = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
 
   const save = async (data) => {
-    if (editing) await base44.entities.Tenant.update(editing.id, data);
-    else await base44.entities.Tenant.create(data);
+    setSaving(true);
+    if (editing) {
+      await base44.entities.Tenant.update(editing.id, data);
+    } else {
+      const created = await base44.entities.Tenant.create(data);
+      setFormOpen(false);
+      setSaving(false);
+      setProvisioning(true);
+      try {
+        const res = await base44.functions.invoke("provisionTenantSquad", { tenantId: created.id });
+        toast({ title: "Squad de IA provisionado", description: `Agentes dedicados: ${(res.data.agents || []).join(", ")}` });
+      } catch (err) {
+        toast({ title: "Erro ao provisionar Squad", description: err.message, variant: "destructive" });
+      }
+      setProvisioning(false);
+      setEditing(null);
+      refreshTenants();
+      return;
+    }
+    setSaving(false);
     setFormOpen(false);
     setEditing(null);
     refreshTenants();
@@ -72,7 +95,27 @@ export default function Tenants() {
         )}
       </div>
 
-      {formOpen && <TenantForm open={formOpen} tenant={editing} onClose={() => { setFormOpen(false); setEditing(null); }} onSave={save} />}
+      {formOpen && (
+        <Dialog open onOpenChange={(o) => { if (!o) { setFormOpen(false); setEditing(null); } }}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-slate-100">
+            <DialogHeader><DialogTitle>{editing ? "Editar cliente" : "Novo cliente"}</DialogTitle></DialogHeader>
+            <TenantForm initial={editing} onSubmit={save} saving={saving} />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {provisioning && (
+        <Dialog open>
+          <DialogContent className="bg-slate-900 border-slate-700 text-slate-100 max-w-sm [&>button]:hidden">
+            <div className="flex flex-col items-center gap-3 py-6">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+              <p className="text-sm text-slate-300 font-medium">Provisionando Squad de IA dedicado...</p>
+              <p className="text-xs text-slate-500 text-center">Instanciando Analista, Supervisor e Diretor exclusivos deste cliente</p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {detail && <TenantDetail open={!!detail} tenant={detail} onClose={() => setDetail(null)} />}
     </div>
   );
