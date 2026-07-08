@@ -64,6 +64,9 @@ export default function Importacoes() {
     if (!file) return;
     setBusy("cash");
     try {
+      if (file.name.toLowerCase().endsWith(".xls")) {
+        throw new Error("O formato .xls (Excel antigo) não é suportado. Salve a planilha como .xlsx ou CSV e tente novamente.");
+      }
       if (file.name.toLowerCase().endsWith(".csv") || file.type === "text/csv") {
         const rows = parseCSV(await file.text());
         if (!rows.length) throw new Error("Nenhuma linha de dados encontrada no arquivo.");
@@ -163,7 +166,7 @@ export default function Importacoes() {
               <p className="text-xs text-slate-500">CSV ou Excel — mapeie as colunas no momento do upload</p>
             </div>
           </div>
-          <input ref={cashRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { startCashImport(e.target.files[0]); e.target.value = ""; }} />
+          <input ref={cashRef} type="file" accept=".csv,.xlsx" className="hidden" onChange={(e) => { startCashImport(e.target.files[0]); e.target.value = ""; }} />
           <Button disabled={busy === "cash"} onClick={() => requireTenant() && cashRef.current.click()} className="w-full bg-green-600 hover:bg-green-500">
             <Upload className="w-4 h-4 mr-2" /> {busy === "cash" ? "Lendo arquivo..." : "Enviar planilha de caixa"}
           </Button>
