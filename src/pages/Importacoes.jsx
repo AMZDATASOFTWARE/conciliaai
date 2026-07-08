@@ -64,21 +64,22 @@ export default function Importacoes() {
     if (!file) return;
     setBusy("cash");
     try {
-      let rows;
       if (file.name.toLowerCase().endsWith(".csv") || file.type === "text/csv") {
-        rows = parseCSV(await file.text());
+        const rows = parseCSV(await file.text());
+        if (!rows.length) throw new Error("Nenhuma linha de dados encontrada no arquivo.");
+        setPendingCash({ rows, headers: Object.keys(rows[0]) });
       } else {
-        // XLS/XLSX: extração preservando todas as colunas originais
+        // XLS/XLSX: primeiro lê apenas os cabeçalhos; as linhas são extraídas após confirmar o mapeamento
         const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        const res = await base44.integrations.Core.ExtractDataFromUploadedFile({
-          file_url,
-          json_schema: { type: "array", items: { type: "object", additionalProperties: true } },
+        const res = await base44.integrations.Core.InvokeLLM({
+          prompt: "Liste exatamente os nomes das colunas (cabeçalhos da primeira linha) desta planilha, na ordem em que aparecem, sem alterar a grafia.",
+          file_urls: [file_url],
+          response_json_schema: { type: "object", properties: { headers: { type: "array", items: { type: "string" } } } },
         });
-        if (res.status !== "success" || !res.output) throw new Error(res.details || "Não foi possível ler a planilha.");
-        rows = Array.isArray(res.output) ? res.output : [res.output];
+        const headers = res?.headers || [];
+        if (!headers.length) throw new Error("Não foi possível identificar os cabeçalhos da planilha.");
+        setPendingCash({ fileUrl: file_url, headers });
       }
-      if (!rows.length) throw new Error("Nenhuma linha de dados encontrada no arquivo.");
-      setPendingCash({ rows, headers: Object.keys(rows[0]) });
     } catch (e) {
       toast({ title: "Falha na leitura do arquivo", description: e.message, variant: "destructive" });
     }
@@ -87,10 +88,32 @@ export default function Importacoes() {
 
   // Passo 2: usuário confirmou o De/Para no modal → salva as CashTransactions
   const confirmCashImport = async (mapping) => {
-    const { rows } = pendingCash;
+    const pending = pendingCash;
     setPendingCash(null);
     setBusy("cash");
     try {
+      let rows = pending.rows;
+      if (!rows) {
+        // Excel: extrai as linhas usando os cabeçalhos identificados como esquema
+        const res = await base44.integrations.Core.ExtractDataFromUploadedFile({
+          file_url: pending.fileUrl,
+          json_schema: {
+            type: "object",
+            properties: {
+              rows: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: Object.fromEntries(pending.headers.map((h) => [h, { type: "string" }])),
+                },
+              },
+            },
+          },
+        });
+        if (res.status !== "success" || !res.output) throw new Error(res.details || "Não foi possível extrair os dados da planilha.");
+        rows = res.output.rows || (Array.isArray(res.output) ? res.output : []);
+        if (!rows.length) throw new Error("Nenhuma linha de dados extraída da planilha.");
+      }
       const coreMapping = { core_date: mapping.date, core_amount: mapping.amount, core_description: mapping.description };
       const records = mapRows(rows, coreMapping);
       const source = await getOrCreateSource(tenantId, "spreadsheet", "Planilha de Caixa");
