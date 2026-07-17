@@ -254,7 +254,7 @@ export default function Importacoes() {
         </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid md:grid-cols-3 gap-4">
         <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-9 h-9 rounded-lg bg-blue-600/15 flex items-center justify-center"><Landmark className="w-4.5 h-4.5 text-blue-400" /></div>
