@@ -78,7 +78,9 @@ export default function Conciliacao() {
       setRunning(false);
       return;
     }
-    const { records: newRecords, usedCash, ruleHits } = runReconciliation({ bankTxs, cashTxs, rules: tenantRules });
+    const rejected = await base44.entities.RejectedMatch.filter({ tenant_id: tenantId }, "-created_date", 2000);
+    const rejectedPairs = new Set(rejected.filter((r) => r.cash_transaction_id).map((r) => `${r.bank_transaction_id}|${r.cash_transaction_id}`));
+    const { records: newRecords, usedCash, ruleHits } = runReconciliation({ bankTxs, cashTxs, rules: tenantRules, rejectedPairs });
     await base44.entities.ReconciledRecord.bulkCreate(newRecords);
     if (bankTxs.length) {
       await base44.entities.BankTransaction.bulkUpdate(
@@ -131,10 +133,16 @@ export default function Conciliacao() {
     const resolvedBankIds = new Set(existingActive.map((r) => r.bank_transaction_id));
     const bankTxs = bankTxsRaw.filter((t) => !resolvedBankIds.has(t.id));
 
+    const rejected = await base44.entities.RejectedMatch.filter({ tenant_id: tenantId }, "-created_date", 2000);
+    const rejectedBankCashPairs = new Set(rejected.filter((r) => r.cash_transaction_id).map((r) => `${r.bank_transaction_id}|${r.cash_transaction_id}`));
+    const rejectedBankAcquirerPairs = new Set(rejected.filter((r) => r.acquirer_settlement_id).map((r) => `${r.bank_transaction_id}|${r.acquirer_settlement_id}`));
+
     const { records: newRecords, usedBankIds, usedCashIds, usedAcquirerIds } = run3WayReconciliation({
       bankTxs,
       cashTxs: cashTxsRaw,
       acquirerSettlements: acquirerRaw,
+      rejectedBankCashPairs,
+      rejectedBankAcquirerPairs,
     });
 
     if (newRecords.length > 0) {
@@ -177,6 +185,19 @@ export default function Conciliacao() {
       return;
     }
     await base44.entities.ReconciledRecord.update(rec.id, { status });
+    // Memória de rejeição (Fase 7.2): quando uma sugestão de match vira "divergente",
+    // grava o(s) par(es) rejeitado(s) para que nenhum motor volte a sugerir a mesma
+    // combinação depois — evita ficar re-oferecendo pra revisão humana algo que já
+    // foi explicitamente marcado como errado.
+    if (status === "divergent" && rec.bank_transaction_id) {
+      const cashIds = rec.cash_transaction_ids?.length ? rec.cash_transaction_ids : (rec.cash_transaction_id ? [rec.cash_transaction_id] : []);
+      const acquirerIds = rec.acquirer_settlement_ids?.length ? rec.acquirer_settlement_ids : [];
+      const rejections = [
+        ...cashIds.map((cash_transaction_id) => ({ tenant_id: rec.tenant_id, bank_transaction_id: rec.bank_transaction_id, cash_transaction_id, rejected_at: new Date().toISOString() })),
+        ...acquirerIds.map((acquirer_settlement_id) => ({ tenant_id: rec.tenant_id, bank_transaction_id: rec.bank_transaction_id, acquirer_settlement_id, rejected_at: new Date().toISOString() })),
+      ];
+      if (rejections.length) await base44.entities.RejectedMatch.bulkCreate(rejections);
+    }
     setDetail(null);
     reload();
     // Mesmo caminho de aprendizado do RecordReviewDialog (Fase 6: unificar as
