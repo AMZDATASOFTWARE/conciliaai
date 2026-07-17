@@ -128,8 +128,8 @@ export default function Conciliacao() {
           <p className="text-sm text-slate-400 mt-1">Revisão dos registros conciliados com rastreabilidade da IA</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={run} disabled={running || aiRunning} variant="outline" className="border-slate-600">
-            <Play className="w-4 h-4 mr-2" /> {running ? "Conciliando..." : "Conciliação por regras"}
+          <Button onClick={run} disabled={running || aiRunning} variant="outline" className="border-slate-600" title="Só concilia lançamentos cujo dicionário reconhece a descrição — nunca por coincidência de valor">
+            <Play className="w-4 h-4 mr-2" /> {running ? "Conciliando..." : "Conciliação por Dicionário (regras)"}
           </Button>
           <Button onClick={runAiSquad} disabled={running || aiRunning} className="bg-blue-600 hover:bg-blue-500">
             <Sparkles className="w-4 h-4 mr-2" /> {aiRunning ? "Squad em execução (Analista → Supervisor → Diretor)..." : "Executar Conciliação IA (Squad Hierárquico)"}
