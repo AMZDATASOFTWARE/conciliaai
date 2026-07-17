@@ -45,6 +45,12 @@ export default function RecordReviewDialog({ record, bankTxn, rule, costCenters,
           <DialogTitle className="flex items-center gap-2">Revisar Conciliação <StatusBadge status={record.status} /></DialogTitle>
         </DialogHeader>
 
+        {record.locked && (
+          <div className="bg-muted border border-border rounded-lg p-3 text-xs text-muted-foreground">
+            Já exportado para a Conta Azul — travado contra edição. Reabra a conciliação (botão na tela de detalhe) antes de corrigir.
+          </div>
+        )}
+
         {bankTxn && (
           <div className="bg-background rounded-lg p-3 border border-border text-sm space-y-1">
             <p className="font-medium">{bankTxn.description}</p>
@@ -77,9 +83,9 @@ export default function RecordReviewDialog({ record, bankTxn, rule, costCenters,
         <div><Label>Observações</Label><Textarea value={data.notes} onChange={(e) => set('notes', e.target.value)} rows={2} className="mt-1" /></div>
 
         <div className="flex gap-2 pt-2">
-          <Button onClick={() => save('reconciled')} disabled={saving} className="flex-1 bg-success hover:bg-success/90 text-white">Aprovar</Button>
-          <Button onClick={() => save('manual')} disabled={saving} variant="secondary" className="flex-1">Salvar Manual</Button>
-          <Button onClick={() => save('divergent')} disabled={saving} variant="destructive" className="flex-1">Divergente</Button>
+          <Button onClick={() => save('reconciled')} disabled={saving || record.locked} className="flex-1 bg-success hover:bg-success/90 text-white">Aprovar</Button>
+          <Button onClick={() => save('manual')} disabled={saving || record.locked} variant="secondary" className="flex-1">Salvar Manual</Button>
+          <Button onClick={() => save('divergent')} disabled={saving || record.locked} variant="destructive" className="flex-1">Divergente</Button>
         </div>
       </DialogContent>
     </Dialog>
