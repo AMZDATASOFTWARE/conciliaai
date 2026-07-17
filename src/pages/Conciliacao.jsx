@@ -179,25 +179,29 @@ export default function Conciliacao() {
     setAiRunning(false);
   };
 
+  // Memória de rejeição (Fase 7.2): quando uma sugestão de match vira "divergente",
+  // grava o(s) par(es) rejeitado(s) para que nenhum motor volte a sugerir a mesma
+  // combinação depois — evita ficar re-oferecendo pra revisão humana algo que já
+  // foi explicitamente marcado como errado. Compartilhado entre a ação rápida
+  // (setStatus) e o diálogo de revisão completo (handleReviewSave).
+  const recordRejectionIfNeeded = async (rec, status) => {
+    if (status !== "divergent" || !rec.bank_transaction_id) return;
+    const cashIds = rec.cash_transaction_ids?.length ? rec.cash_transaction_ids : (rec.cash_transaction_id ? [rec.cash_transaction_id] : []);
+    const acquirerIds = rec.acquirer_settlement_ids?.length ? rec.acquirer_settlement_ids : [];
+    const rejections = [
+      ...cashIds.map((cash_transaction_id) => ({ tenant_id: rec.tenant_id, bank_transaction_id: rec.bank_transaction_id, cash_transaction_id, rejected_at: new Date().toISOString() })),
+      ...acquirerIds.map((acquirer_settlement_id) => ({ tenant_id: rec.tenant_id, bank_transaction_id: rec.bank_transaction_id, acquirer_settlement_id, rejected_at: new Date().toISOString() })),
+    ];
+    if (rejections.length) await base44.entities.RejectedMatch.bulkCreate(rejections);
+  };
+
   const setStatus = async (rec, status) => {
     if (rec.locked) {
       toast({ title: "Registro travado", description: "Já foi exportado para a Conta Azul. Use \"Reabrir Conciliação\" para editar.", variant: "destructive" });
       return;
     }
     await base44.entities.ReconciledRecord.update(rec.id, { status });
-    // Memória de rejeição (Fase 7.2): quando uma sugestão de match vira "divergente",
-    // grava o(s) par(es) rejeitado(s) para que nenhum motor volte a sugerir a mesma
-    // combinação depois — evita ficar re-oferecendo pra revisão humana algo que já
-    // foi explicitamente marcado como errado.
-    if (status === "divergent" && rec.bank_transaction_id) {
-      const cashIds = rec.cash_transaction_ids?.length ? rec.cash_transaction_ids : (rec.cash_transaction_id ? [rec.cash_transaction_id] : []);
-      const acquirerIds = rec.acquirer_settlement_ids?.length ? rec.acquirer_settlement_ids : [];
-      const rejections = [
-        ...cashIds.map((cash_transaction_id) => ({ tenant_id: rec.tenant_id, bank_transaction_id: rec.bank_transaction_id, cash_transaction_id, rejected_at: new Date().toISOString() })),
-        ...acquirerIds.map((acquirer_settlement_id) => ({ tenant_id: rec.tenant_id, bank_transaction_id: rec.bank_transaction_id, acquirer_settlement_id, rejected_at: new Date().toISOString() })),
-      ];
-      if (rejections.length) await base44.entities.RejectedMatch.bulkCreate(rejections);
-    }
+    await recordRejectionIfNeeded(rec, status);
     setDetail(null);
     reload();
     // Mesmo caminho de aprendizado do RecordReviewDialog (Fase 6: unificar as
@@ -213,6 +217,7 @@ export default function Conciliacao() {
       return;
     }
     await base44.entities.ReconciledRecord.update(rec.id, data);
+    await recordRejectionIfNeeded(rec, data.status);
     setReview(null);
     reload();
   };
