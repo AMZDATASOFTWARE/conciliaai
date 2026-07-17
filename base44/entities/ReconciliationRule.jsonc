@@ -40,6 +40,16 @@
       "type": "string",
       "description": "Origem da regra: 'human' ou 'system_feedback_loop'"
     },
+    "approval_status": {
+      "type": "string",
+      "enum": [
+        "pending_review",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending_review",
+      "description": "Regras aprendidas pela IA nascem pending_review; s\u00f3 valem depois de aprovadas por humano"
+    },
     "metadata": {
       "type": "object",
       "additionalProperties": true,
