@@ -282,6 +282,20 @@ export default function Importacoes() {
             <Upload className="w-4 h-4 mr-2" /> {busy === "cash" ? "Lendo arquivo..." : "Enviar planilha de caixa"}
           </Button>
         </div>
+
+        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-9 h-9 rounded-lg bg-purple-600/15 flex items-center justify-center"><CreditCard className="w-4.5 h-4.5 text-purple-400" /></div>
+            <div>
+              <p className="font-medium text-slate-200">Relatório da maquininha</p>
+              <p className="text-xs text-slate-500">Stone/Ton/Cielo/Rede</p>
+            </div>
+          </div>
+          <input ref={acquirerRef} type="file" accept=".csv,.xlsx" className="hidden" onChange={(e) => { startAcquirerImport(e.target.files[0]); e.target.value = ""; }} />
+          <Button disabled={busy === "acquirer"} onClick={() => requireTenant() && acquirerRef.current.click()} className="w-full bg-purple-600 hover:bg-purple-500">
+            <Upload className="w-4 h-4 mr-2" /> {busy === "acquirer" ? "Lendo arquivo..." : "Enviar relatório da maquininha"}
+          </Button>
+        </div>
       </div>
 
       <ColumnMappingModal
@@ -291,7 +305,16 @@ export default function Importacoes() {
         onConfirm={confirmCashImport}
       />
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <ColumnMappingModal
+        isOpen={!!pendingAcquirer}
+        onClose={() => setPendingAcquirer(null)}
+        fileHeaders={pendingAcquirer?.headers || []}
+        onConfirm={confirmAcquirerImport}
+        fields={ACQUIRER_MODAL_FIELDS}
+        title="Mapeamento de colunas — Relatório da Maquininha"
+      />
+
+      <div className="grid md:grid-cols-3 gap-4">
         {[
           { title: "Últimas transações bancárias", pager: bank, empty: "Nenhum OFX importado ainda." },
           { title: "Últimos lançamentos de caixa", pager: cash, empty: "Nenhuma planilha importada ainda." },
