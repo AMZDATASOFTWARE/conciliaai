@@ -13,7 +13,7 @@ import RecordReviewDialog from "@/components/reconciliation/RecordReviewDialog";
 import AuditReportDialog from "@/components/conciliacao/AuditReportDialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GitMerge, Play, Eye, Check, AlertTriangle, Sparkles, Brain, Pencil, Lock } from "lucide-react";
+import { GitMerge, Play, Eye, Check, AlertTriangle, Sparkles, Brain, Pencil, Lock, CreditCard } from "lucide-react";
 
 export default function Conciliacao() {
   const { tenantId } = useTenant();
@@ -213,10 +213,13 @@ export default function Conciliacao() {
           <p className="text-sm text-slate-400 mt-1">Revisão dos registros conciliados com rastreabilidade da IA</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={run} disabled={running || aiRunning} variant="outline" className="border-slate-600" title="Só concilia lançamentos cujo dicionário reconhece a descrição — nunca por coincidência de valor">
+          <Button onClick={run} disabled={running || threeWayRunning || aiRunning} variant="outline" className="border-slate-600" title="Só concilia lançamentos cujo dicionário reconhece a descrição — nunca por coincidência de valor">
             <Play className="w-4 h-4 mr-2" /> {running ? "Conciliando..." : "Conciliação por Dicionário (regras)"}
           </Button>
-          <Button onClick={runAiSquad} disabled={running || aiRunning} className="bg-blue-600 hover:bg-blue-500">
+          <Button onClick={runThreeWay} disabled={running || threeWayRunning || aiRunning} className="bg-purple-600 hover:bg-purple-500" title="Match matemático exato: caixa → relatório da maquininha → banco. Só concilia quando a cadeia inteira fecha.">
+            <CreditCard className="w-4 h-4 mr-2" /> {threeWayRunning ? "Conciliando (3 pontas)..." : "Conciliação Maquininha (3 pontas)"}
+          </Button>
+          <Button onClick={runAiSquad} disabled={running || threeWayRunning || aiRunning} className="bg-blue-600 hover:bg-blue-500">
             <Sparkles className="w-4 h-4 mr-2" /> {aiRunning ? "Squad em execução (Analista → Supervisor → Diretor)..." : "Executar Conciliação IA (Squad Hierárquico)"}
           </Button>
         </div>
