@@ -10,6 +10,7 @@ import StatusBadge from "@/components/StatusBadge";
 import EmptyState from "@/components/EmptyState";
 import RecordDetail from "@/components/conciliacao/RecordDetail";
 import RecordReviewDialog from "@/components/reconciliation/RecordReviewDialog";
+import { feedbackLoopService } from "@/lib/ai/feedbackLoopService";
 import AuditReportDialog from "@/components/conciliacao/AuditReportDialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -178,6 +179,11 @@ export default function Conciliacao() {
     await base44.entities.ReconciledRecord.update(rec.id, { status });
     setDetail(null);
     reload();
+    // Mesmo caminho de aprendizado do RecordReviewDialog (Fase 6: unificar as
+    // ações de correção). Hoje essa ação rápida não edita categoria/responsável/
+    // cost center, então normalmente não há nada relevante a aprender — mas se
+    // esses campos forem editados aqui no futuro, o aprendizado já fica plugado.
+    feedbackLoopService(rec, { status });
   };
 
   const handleReviewSave = async (rec, data) => {
