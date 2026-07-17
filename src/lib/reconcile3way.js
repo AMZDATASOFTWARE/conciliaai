@@ -40,7 +40,7 @@ function daysDiff(d1, d2) {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
-export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements, rejectedBankCashPairs = new Set(), rejectedBankAcquirerPairs = new Set() }) {
+export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements, rejectedBankCashPairs = new Set(), rejectedBankAcquirerPairs = new Set(), partialCashIds = new Set() }) {
   const records = [];
   // Working sets usados só durante as etapas, pra não reaproveitar o mesmo
   // caixa/banco/liquidação em duas cadeias diferentes nesta execução.
@@ -73,6 +73,7 @@ export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements, r
     const cash = cashTxs.find(
       (ct) =>
         !reservedCashIds.has(ct.id) &&
+        !partialCashIds.has(ct.id) &&
         ct.date === saleDate &&
         paymentMethodMatchesBucket(ct.payment_method, bucket) &&
         Math.abs(ct.amount - grossSum) < TOLERANCE
@@ -95,6 +96,7 @@ export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements, r
 
     const matchedBatches = [];
     let allBatchesMatched = byBatch.size > 0;
+    let failedBatch = null;
     for (const [key, batchSettlements] of byBatch) {
       const [settlementDate] = key.split("|");
       const netSum = round2(batchSettlements.reduce((sum, s) => sum + s.net_amount, 0));
@@ -109,12 +111,39 @@ export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements, r
       );
       if (!bank) {
         allBatchesMatched = false;
+        failedBatch = { settlementDate, netSum, batchReference: batchSettlements[0]?.batch_reference || "" };
         break;
       }
       matchedBatches.push({ bank, settlements: batchSettlements, netSum });
     }
 
-    if (!allBatchesMatched) continue; // cadeia não fecha 100% nesta execução — deixa pending
+    if (!allBatchesMatched) {
+      // Etapa 1 fechou (caixa bate com a soma bruta da maquininha) mas a Etapa 2
+      // não achou o depósito bancário do lote — em vez de deixar tudo "pending"
+      // silenciosamente, grava um registro "partial" visível explicando qual elo
+      // faltou, pra o operador saber exatamente onde investigar (Fase 7.3).
+      const grossSum = round2(settlements.reduce((sum, s) => sum + s.gross_amount, 0));
+      records.push({
+        tenant_id: cash.tenant_id,
+        bank_transaction_id: null,
+        cash_transaction_id: cash.id,
+        cash_transaction_ids: [cash.id],
+        acquirer_settlement_ids: settlements.map((s) => s.id),
+        reconciliation_date: cash.date,
+        status: "partial",
+        ai_classification: "Receita de cartão (3 pontas) — parcial",
+        ai_reasoning: `Caixa (R$ ${cash.amount.toFixed(2)}) bate com a soma bruta da maquininha (R$ ${grossSum.toFixed(2)}), mas nenhum lançamento bancário em até 1 dia de ${failedBatch.settlementDate} bate com o líquido esperado do lote${failedBatch.batchReference ? ` "${failedBatch.batchReference}"` : ""} (R$ ${failedBatch.netSum.toFixed(2)}). Falta o elo maquininha → banco.`,
+        matched_by_rule_id: null,
+        category: null,
+        responsible: "Vendas Cartão",
+        cost_center_id: null,
+        payment_method: cash.payment_method || "",
+        notes: "Cadeia fechada só até a etapa 1 (caixa↔maquininha) — revisar extrato bancário.",
+        confidence: 0.5,
+        engine_version: "3way_deterministic_v1",
+      });
+      continue;
+    }
 
     for (const { bank, settlements: batchSettlements, netSum } of matchedBatches) {
       matchedBankIds.add(bank.id);
@@ -146,12 +175,13 @@ export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements, r
     }
   }
 
-  // Deriva os sets finais só do que de fato virou registro — evita marcar como
-  // "reconciled" um caixa/banco/liquidação que ficou reservado numa cadeia que
-  // acabou não fechando.
-  const finalBankIds = new Set(records.map((r) => r.bank_transaction_id));
-  const finalCashIds = new Set(records.flatMap((r) => r.cash_transaction_ids));
-  const finalAcquirerIds = new Set(records.flatMap((r) => r.acquirer_settlement_ids));
+  // Deriva os sets finais só dos registros REALMENTE fechados ("reconciled") —
+  // evita marcar como "reconciled" um caixa/banco/liquidação que ficou reservado
+  // numa cadeia que acabou não fechando, ou que gerou só um registro "partial".
+  const closedRecords = records.filter((r) => r.status === "reconciled");
+  const finalBankIds = new Set(closedRecords.map((r) => r.bank_transaction_id));
+  const finalCashIds = new Set(closedRecords.flatMap((r) => r.cash_transaction_ids));
+  const finalAcquirerIds = new Set(closedRecords.flatMap((r) => r.acquirer_settlement_ids));
 
   return { records, usedBankIds: finalBankIds, usedCashIds: finalCashIds, usedAcquirerIds: finalAcquirerIds };
 }
