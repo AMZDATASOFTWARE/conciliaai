@@ -42,14 +42,17 @@ const round2 = (n) => Math.round(n * 100) / 100;
 
 export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements }) {
   const records = [];
-  // usedCashIds é usado só durante a Etapa 1 pra não oferecer o mesmo lançamento
-  // de caixa a dois grupos da maquininha nesta execução. NÃO reflete o resultado
-  // final — uma cadeia pode reservar um caixa na Etapa 1 e falhar na Etapa 2
-  // (banco não bate), nesse caso o caixa fica "reservado" aqui mas SEM registro
-  // criado. Os sets devolvidos no final são recalculados a partir de `records`
-  // para nunca marcar como reconciliado algo que na verdade não entrou em
-  // nenhum ReconciledRecord.
-  const usedCashIds = new Set();
+  // Working sets usados só durante as etapas, pra não reaproveitar o mesmo
+  // caixa/banco/liquidação em duas cadeias diferentes nesta execução.
+  // reservedCashIds é reservado já na Etapa 1, ANTES da Etapa 2 validar o banco
+  // — se a Etapa 2 falhar, esse caixa fica "reservado" aqui mas SEM registro
+  // criado. matchedBankIds/matchedAcquirerIds só recebem algo quando a cadeia
+  // fecha de verdade (dentro do bloco `if (allBatchesMatched)`), então são
+  // sempre precisos. Por segurança, os três sets devolvidos no final são
+  // recalculados a partir de `records`, nunca dos working sets diretamente.
+  const reservedCashIds = new Set();
+  const matchedBankIds = new Set();
+  const matchedAcquirerIds = new Set();
 
   // ===== Etapa 1: Caixa <-> Maquininha (bruto, mesmo dia) =====
   // Agrupa liquidações por dia da venda + modalidade (débito/crédito/pix), soma o
@@ -69,13 +72,13 @@ export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements })
     const grossSum = round2(settlements.reduce((sum, s) => sum + s.gross_amount, 0));
     const cash = cashTxs.find(
       (ct) =>
-        !usedCashIds.has(ct.id) &&
+        !reservedCashIds.has(ct.id) &&
         ct.date === saleDate &&
         paymentMethodMatchesBucket(ct.payment_method, bucket) &&
         Math.abs(ct.amount - grossSum) < TOLERANCE
     );
     if (!cash) continue;
-    usedCashIds.add(cash.id);
+    reservedCashIds.add(cash.id);
     chains.push({ cash, settlements });
   }
 
@@ -97,7 +100,7 @@ export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements })
       const netSum = round2(batchSettlements.reduce((sum, s) => sum + s.net_amount, 0));
       const bank = bankTxs.find(
         (bt) =>
-          !usedBankIds.has(bt.id) &&
+          !matchedBankIds.has(bt.id) &&
           bt.type === "credit" &&
           daysDiff(bt.date, settlementDate) <= 1 &&
           Math.abs(bt.amount - netSum) < TOLERANCE
@@ -112,8 +115,8 @@ export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements })
     if (!allBatchesMatched) continue; // cadeia não fecha 100% nesta execução — deixa pending
 
     for (const { bank, settlements: batchSettlements, netSum } of matchedBatches) {
-      usedBankIds.add(bank.id);
-      batchSettlements.forEach((s) => usedAcquirerIds.add(s.id));
+      matchedBankIds.add(bank.id);
+      batchSettlements.forEach((s) => matchedAcquirerIds.add(s.id));
 
       const grossSum = round2(batchSettlements.reduce((sum, s) => sum + s.gross_amount, 0));
       const feeSum = round2(batchSettlements.reduce((sum, s) => sum + (s.fee_amount || 0), 0));
