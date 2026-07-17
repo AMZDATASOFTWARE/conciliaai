@@ -3,14 +3,16 @@ import { base44 } from "@/api/base44Client";
 import { useTenant } from "@/lib/TenantContext";
 import { parseOFX } from "@/lib/reconcile";
 import { parseCSV } from "@/lib/parsers/csv";
-import { mapRows } from "@/lib/parsers/dynamicParser";
+import { mapRows, mapAcquirerRows, ACQUIRER_FIELDS } from "@/lib/parsers/dynamicParser";
 import ColumnMappingModal from "@/components/imports/ColumnMappingModal";
 import { useToast } from "@/components/ui/use-toast";
 import { usePaginatedEntity } from "@/hooks/usePaginatedEntity";
 import DataPagination from "@/components/DataPagination";
 import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
-import { Landmark, Wallet, Upload, FileWarning } from "lucide-react";
+import { Landmark, Wallet, Upload, FileWarning, CreditCard } from "lucide-react";
+
+const ACQUIRER_MODAL_FIELDS = Object.entries(ACQUIRER_FIELDS).map(([key, f]) => ({ key, ...f }));
 
 async function getOrCreateSource(tenantId, type, name) {
   const existing = await base44.entities.TransactionSource.filter({ tenant_id: tenantId, type }, "name", 1);
@@ -44,6 +46,62 @@ async function findExistingCashKeys(tenantId, records) {
     { tenant_id: tenantId, date: { $gte: dates[0], $lte: dates[dates.length - 1] } }, "date", 5000
   );
   return new Set(existing.map(cashKey));
+}
+
+// Dedup do relatório de maquininha: chave composta usando os campos que
+// identificam uma linha única de venda/lote.
+const acquirerKey = (r) => `${r.sale_date}|${r.settlement_date}|${r.card_brand || ""}|${r.gross_amount}|${r.batch_reference || ""}`;
+
+async function findExistingAcquirerKeys(tenantId, records) {
+  const dates = records.map((r) => r.sale_date).filter(Boolean).sort();
+  if (!dates.length) return new Set();
+  const existing = await base44.entities.AcquirerSettlement.filter(
+    { tenant_id: tenantId, sale_date: { $gte: dates[0], $lte: dates[dates.length - 1] } }, "sale_date", 5000
+  );
+  return new Set(existing.map(acquirerKey));
+}
+
+// Lê só os cabeçalhos/linhas de um arquivo CSV/XLSX — compartilhado entre o
+// fluxo de importação de caixa e o de maquininha (mesma mecânica de leitura,
+// só o mapeamento de colunas final é diferente).
+async function readFileHeadersOrRows(file) {
+  if (file.name.toLowerCase().endsWith(".xls")) {
+    throw new Error("O formato .xls (Excel antigo) não é suportado. Salve a planilha como .xlsx ou CSV e tente novamente.");
+  }
+  if (file.name.toLowerCase().endsWith(".csv") || file.type === "text/csv") {
+    const rows = parseCSV(await file.text());
+    if (!rows.length) throw new Error("Nenhuma linha de dados encontrada no arquivo.");
+    return { rows, headers: Object.keys(rows[0]) };
+  }
+  const { file_url } = await base44.integrations.Core.UploadFile({ file });
+  const res = await base44.integrations.Core.InvokeLLM({
+    prompt: "Liste exatamente os nomes das colunas (cabeçalhos da primeira linha) desta planilha, na ordem em que aparecem, sem alterar a grafia.",
+    file_urls: [file_url],
+    response_json_schema: { type: "object", properties: { headers: { type: "array", items: { type: "string" } } } },
+  });
+  const headers = res?.headers || [];
+  if (!headers.length) throw new Error("Não foi possível identificar os cabeçalhos da planilha.");
+  return { fileUrl: file_url, headers };
+}
+
+async function extractRowsFromFile(pending) {
+  if (pending.rows) return pending.rows;
+  const res = await base44.integrations.Core.ExtractDataFromUploadedFile({
+    file_url: pending.fileUrl,
+    json_schema: {
+      type: "object",
+      properties: {
+        rows: {
+          type: "array",
+          items: { type: "object", properties: Object.fromEntries(pending.headers.map((h) => [h, { type: "string" }])) },
+        },
+      },
+    },
+  });
+  if (res.status !== "success" || !res.output) throw new Error(res.details || "Não foi possível extrair os dados da planilha.");
+  const rows = res.output.rows || (Array.isArray(res.output) ? res.output : []);
+  if (!rows.length) throw new Error("Nenhuma linha de dados extraída da planilha.");
+  return rows;
 }
 
 export default function Importacoes() {
