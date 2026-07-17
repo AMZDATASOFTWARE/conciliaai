@@ -77,11 +77,18 @@ export default function Dicionario() {
         </Button>
       </div>
 
+      <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+        <TabsList className="bg-slate-800">
+          <TabsTrigger value="all">Todas</TabsTrigger>
+          <TabsTrigger value="pending_review">Pendentes de aprovação{pendingCount > 0 ? ` (${pendingCount})` : ""}</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin" /></div>
-        ) : rules.length === 0 ? (
-          <EmptyState icon={BookOpen} title="Nenhuma regra cadastrada" description='Ex: keyword "WILSON DE CASSIO" → Jhennifer, categoria Diárias.' />
+        ) : visibleRules.length === 0 ? (
+          <EmptyState icon={BookOpen} title={statusFilter === "pending_review" ? "Nenhuma regra pendente" : "Nenhuma regra cadastrada"} description='Ex: keyword "WILSON DE CASSIO" → Jhennifer, categoria Diárias.' />
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -91,23 +98,37 @@ export default function Dicionario() {
                 <th className="px-5 py-3 font-medium">Categoria</th>
                 <th className="px-5 py-3 font-medium">Centro de custo</th>
                 <th className="px-5 py-3 font-medium">Cliente</th>
+                <th className="px-5 py-3 font-medium">Origem</th>
                 <th className="px-5 py-3 font-medium text-center">PF</th>
                 <th className="px-5 py-3 font-medium text-right">Matches</th>
                 <th className="px-5 py-3 font-medium text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/60">
-              {rules.map((r) => (
+              {visibleRules.map((r) => (
                 <tr key={r.id} className={`hover:bg-slate-700/20 ${r.is_active === false ? "opacity-50" : ""}`}>
                   <td className="px-5 py-2.5 font-mono text-xs text-amber-400">{r.keyword}</td>
                   <td className="px-5 py-2.5 text-slate-200">{r.map_to}</td>
                   <td className="px-5 py-2.5 text-slate-400">{r.category || "—"}</td>
                   <td className="px-5 py-2.5 text-slate-400 font-mono text-xs">{ccById[r.cost_center_id] ? `${ccById[r.cost_center_id].code}- ${ccById[r.cost_center_id].name}` : "—"}</td>
                   <td className="px-5 py-2.5 text-slate-400">{tenantName(r.tenant_id)}</td>
+                  <td className="px-5 py-2.5">
+                    <span className="flex items-center gap-1.5 text-xs" title={r.metadata?.original_description ? `Origem: "${r.metadata.original_description}"` : ""}>
+                      {r.created_by === "system_feedback_loop" ? <Bot className="w-3.5 h-3.5 text-purple-400" /> : <User className="w-3.5 h-3.5 text-slate-500" />}
+                      {r.approval_status === "pending_review" && <span className="text-amber-400">pendente</span>}
+                      {r.approval_status === "rejected" && <span className="text-red-400">rejeitada</span>}
+                    </span>
+                  </td>
                   <td className="px-5 py-2.5 text-center text-slate-400">{r.is_pf ? "Sim" : "Não"}</td>
                   <td className="px-5 py-2.5 text-right tabular-nums text-slate-400">{r.match_count || 0}</td>
                   <td className="px-5 py-2.5">
                     <div className="flex justify-end gap-1">
+                      {r.approval_status === "pending_review" && (
+                        <>
+                          <Button size="sm" variant="ghost" onClick={() => approve(r)} className="text-slate-400 hover:text-green-400" title="Aprovar regra"><Check className="w-4 h-4" /></Button>
+                          <Button size="sm" variant="ghost" onClick={() => reject(r)} className="text-slate-400 hover:text-red-400" title="Rejeitar regra"><X className="w-4 h-4" /></Button>
+                        </>
+                      )}
                       <Button size="sm" variant="ghost" onClick={() => { setEditing(r); setFormOpen(true); }} className="text-slate-400 hover:text-blue-400"><Pencil className="w-4 h-4" /></Button>
                       <Button size="sm" variant="ghost" onClick={async () => { await base44.entities.ReconciliationRule.delete(r.id); load(); }} className="text-slate-400 hover:text-red-400"><Trash2 className="w-4 h-4" /></Button>
                     </div>
