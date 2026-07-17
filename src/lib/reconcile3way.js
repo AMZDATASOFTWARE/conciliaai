@@ -10,6 +10,8 @@
 // Cadeias parciais ficam intocadas (continuam "pending") para revisão humana ou
 // para o Squad de IA processar depois.
 
+import { findSubsetSumMatch } from "./subsetSumMatch.js";
+
 const TOLERANCE = 0.05;
 
 function normalizeText(s) {
@@ -70,7 +72,7 @@ export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements, r
   for (const [key, settlements] of groupsByDay) {
     const [saleDate, bucket] = key.split("|");
     const grossSum = round2(settlements.reduce((sum, s) => sum + s.gross_amount, 0));
-    const cash = cashTxs.find(
+    let cash = cashTxs.find(
       (ct) =>
         !reservedCashIds.has(ct.id) &&
         !partialCashIds.has(ct.id) &&
@@ -78,9 +80,30 @@ export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements, r
         paymentMethodMatchesBucket(ct.payment_method, bucket) &&
         Math.abs(ct.amount - grossSum) < TOLERANCE
     );
+    let usedSettlements = settlements;
+
+    if (!cash) {
+      // Fallback Fase 7.4: a soma de TODAS as linhas do dia/modalidade não bateu com
+      // nenhum caixa — tenta achar um SUBCONJUNTO delas que feche (ex.: uma linha
+      // isolada que pertence a outro dia/loja por engano de captura). Só aceita o
+      // subconjunto se ele for estritamente menor que o grupo inteiro (senão seria
+      // o mesmo caso que a busca acima já teria fechado).
+      const candidateCashTxs = cashTxs.filter(
+        (ct) => !reservedCashIds.has(ct.id) && !partialCashIds.has(ct.id) && ct.date === saleDate && paymentMethodMatchesBucket(ct.payment_method, bucket)
+      );
+      for (const candidate of candidateCashTxs) {
+        const subset = findSubsetSumMatch(settlements, candidate.amount, "gross_amount", TOLERANCE);
+        if (subset && subset.length && subset.length < settlements.length) {
+          cash = candidate;
+          usedSettlements = subset;
+          break;
+        }
+      }
+    }
+
     if (!cash) continue;
     reservedCashIds.add(cash.id);
-    chains.push({ cash, settlements });
+    chains.push({ cash, settlements: usedSettlements });
   }
 
   // ===== Etapa 2: Maquininha <-> Banco (líquido, data de liquidação +-1 dia) =====
