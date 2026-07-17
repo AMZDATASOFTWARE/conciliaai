@@ -159,11 +159,13 @@ export default function Conciliacao() {
       await base44.entities.CashTransaction.bulkUpdate([...usedCashIds].map((id) => ({ id, status: "reconciled" })));
       await base44.entities.AcquirerSettlement.bulkUpdate([...usedAcquirerIds].map((id) => ({ id, status: "reconciled" })));
     }
+    const closedCount = newRecords.filter((r) => r.status === "reconciled").length;
+    const partialCount = newRecords.filter((r) => r.status === "partial").length;
     toast({
       title: newRecords.length ? "Conciliação Maquininha concluída" : "Nenhuma cadeia fechou",
       description: newRecords.length
-        ? `${newRecords.length} depósito(s) bancário(s) conciliado(s) via caixa → maquininha → banco.`
-        : "Nenhuma cadeia caixa→maquininha→banco fechou 100% nesta rodada — os pendentes seguem para revisão (regras ou Squad de IA).",
+        ? `${closedCount} depósito(s) bancário(s) conciliado(s) via caixa → maquininha → banco${partialCount ? `; ${partialCount} cadeia(s) parcial(is) — caixa bate com a maquininha, mas falta o depósito bancário` : ""}.`
+        : "Nenhuma cadeia caixa→maquininha→banco fechou nesta rodada — os pendentes seguem para revisão (regras ou Squad de IA).",
     });
     setThreeWayRunning(false);
     reload();
