@@ -54,7 +54,9 @@ export default function Exportacao() {
       };
     });
 
-    setRecords(populated.filter((r) => r.status === "reconciled" || r.status === "manual"));
+    // Não reexporta por padrão o que já foi exportado antes (exported_at preenchido)
+    // — reexportar sem querer duplicaria lançamentos na Conta Azul.
+    setRecords(populated.filter((r) => (r.status === "reconciled" || r.status === "manual") && !r.exported_at));
     setCostCenters(ccs);
     setLoading(false);
   };
@@ -85,7 +87,7 @@ export default function Exportacao() {
     downloadContaAzulCSV(filtered, `Exportacao_${tenantName}_${mesAno}.csv`);
     const now = new Date().toISOString();
     for (let i = 0; i < filtered.length; i += 500) {
-      await base44.entities.ReconciledRecord.bulkUpdate(filtered.slice(i, i + 500).map((r) => ({ id: r.id, exported_at: now })));
+      await base44.entities.ReconciledRecord.bulkUpdate(filtered.slice(i, i + 500).map((r) => ({ id: r.id, exported_at: now, locked: true })));
     }
     toast({ title: "CSV exportado", description: `${filtered.length} registros no formato estrito Conta Azul (10 colunas).` });
     setExporting(false);
@@ -124,7 +126,7 @@ export default function Exportacao() {
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin" /></div>
         ) : pageRecords.length === 0 ? (
-          <EmptyState icon={FileDown} title="Nenhum registro conciliado para exportar" description="Apenas registros com status Conciliado ou Manual entram no arquivo." />
+          <EmptyState icon={FileDown} title="Nenhum registro conciliado para exportar" description="Apenas registros com status Conciliado ou Manual, ainda não exportados, entram no arquivo." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
