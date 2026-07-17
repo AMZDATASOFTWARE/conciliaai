@@ -15,7 +15,8 @@
       "enum": [
         "ofx",
         "spreadsheet",
-        "api"
+        "api",
+        "acquirer_report"
       ]
     },
     "bank_name": {
