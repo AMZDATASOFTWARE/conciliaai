@@ -137,12 +137,20 @@ export default function Conciliacao() {
     const rejectedBankCashPairs = new Set(rejected.filter((r) => r.cash_transaction_id).map((r) => `${r.bank_transaction_id}|${r.cash_transaction_id}`));
     const rejectedBankAcquirerPairs = new Set(rejected.filter((r) => r.acquirer_settlement_id).map((r) => `${r.bank_transaction_id}|${r.acquirer_settlement_id}`));
 
+    // Idempotência para cadeias "partial" (Fase 7.3): sem isso, todo lote pendente
+    // sem par bancário geraria um registro "partial" novo a cada execução.
+    const existingPartial = await base44.entities.ReconciledRecord.filter(
+      { tenant_id: tenantId, status: "partial" }, "-created_date", 2000
+    );
+    const partialCashIds = new Set(existingPartial.flatMap((r) => r.cash_transaction_ids?.length ? r.cash_transaction_ids : (r.cash_transaction_id ? [r.cash_transaction_id] : [])));
+
     const { records: newRecords, usedBankIds, usedCashIds, usedAcquirerIds } = run3WayReconciliation({
       bankTxs,
       cashTxs: cashTxsRaw,
       acquirerSettlements: acquirerRaw,
       rejectedBankCashPairs,
       rejectedBankAcquirerPairs,
+      partialCashIds,
     });
 
     if (newRecords.length > 0) {
