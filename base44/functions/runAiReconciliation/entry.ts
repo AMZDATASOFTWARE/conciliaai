@@ -17,12 +17,13 @@ Deno.serve(async (req) => {
     if (!tenantId) return Response.json({ error: 'tenantId é obrigatório' }, { status: 400 });
 
     // ===== Contexto isolado do tenant =====
-    const [bankTxns, cashTxns, rules, memory, squadAgents] = await Promise.all([
+    const [bankTxns, cashTxns, rules, memory, squadAgents, costCenters] = await Promise.all([
       base44.entities.BankTransaction.filter({ tenant_id: tenantId, status: 'pending' }, 'date', 150),
       base44.entities.CashTransaction.filter({ tenant_id: tenantId, status: 'pending' }, 'date', 300),
       base44.entities.ReconciliationRule.filter({ tenant_id: tenantId, is_active: true }, '-match_count', 200),
       base44.entities.TenantMemoryContext.filter({ tenant_id: tenantId }, '-created_date', 50),
       base44.entities.TenantAgent.filter({ tenant_id: tenantId }),
+      base44.entities.CostCenter.filter({ tenant_id: tenantId, is_active: true }, 'code', 200),
     ]);
 
     // Squad dedicado do tenant: cada nível da pirâmide executa as instruções da SUA instância
@@ -53,9 +54,12 @@ Deno.serve(async (req) => {
     const bankById = new Map(bankTxnsToProcess.map((t) => [t.id, t]));
     const cashById = new Map(cashTxns.map((t) => [t.id, t]));
     const ruleIds = new Set(rules.map((r) => r.id));
+    const costCenterIds = new Set(costCenters.map((c) => c.id));
     const today = new Date().toISOString().slice(0, 10);
-    const rulesForPrompt = rules.map((r) => ({ id: r.id, keyword: r.keyword, map_to: r.map_to, category: r.category, is_pf: r.is_pf }));
+    const rulesForPrompt = rules.map((r) => ({ id: r.id, keyword: r.keyword, map_to: r.map_to, category: r.category, is_pf: r.is_pf, cost_center_id: r.cost_center_id || null }));
     const memoryForPrompt = memory.map((m) => ({ content: m.content, source: m.source_description }));
+    const costCentersForPrompt = costCenters.map((c) => ({ id: c.id, code: c.code, name: c.name }));
+    const ruleMatchCounts = new Map();
 
     // Processa em lotes pequenos: um único InvokeLLM com 150+ transações costuma
     // devolver decisão pra só uma fração do lote (o modelo "esquece" itens). Lotes
@@ -86,7 +90,8 @@ SKILLS ATIVAS: interpretação de JSON (raw_data), busca semântica/fuzzy matchi
 
 REGRAS:
 - Um lançamento de caixa pode corresponder a no máximo 1 transação bancária e vice-versa.
-- Uma transação bancária pode corresponder à SOMA de vários lançamentos de caixa do mesmo dia (informe todos os cash_transaction_ids).
+- Uma transação bancária pode corresponder à SOMA de vários lançamentos de caixa do mesmo dia (informe TODOS os cash_transaction_ids envolvidos, não só um).
+- IMPORTANTE: quando houver mais de um cash_transaction_id, o campo cash_transaction_ids da decisão final DEVE conter a lista completa — nunca só o primeiro.
 - Transferências internas (ex: "Dinheiro Guardado", movimentações entre contas do próprio cliente) não precisam de par no caixa — classifique como tal em vez de deixar sem match.
 - Use o raw_data para contexto extra (colunas originais do cliente).
 - Datas podem divergir em até 2 dias (compensação).
@@ -141,10 +146,13 @@ ${JSON.stringify(suggestions)}
 TRANSAÇÕES BANCÁRIAS SEM SUGESTÃO DE MATCH (avalie se há regra/memória/transferência interna que as classifique; senão marque approved=false):
 ${JSON.stringify(unmatchedIds.map((id) => bankById.get(id)))}
 
+CENTROS DE CUSTO DISPONÍVEIS (id/código/nome):
+${JSON.stringify(costCentersForPrompt)}
+
 TODOS OS IDS DO LOTE (garanta que nenhum destes fica sem decisão):
 ${JSON.stringify(bankList.map((b) => b.id))}
 
-Para cada transação bancária do lote retorne uma decisão. "approved"=true significa conciliada; false significa divergente (precisa de humano). Se uma regra do dicionário foi usada, informe matched_by_rule_id.`,
+Para cada transação bancária do lote retorne uma decisão. "approved"=true significa conciliada; false significa divergente (precisa de humano). Se uma regra do dicionário foi usada, informe matched_by_rule_id e o mesmo cost_center_id dessa regra (se ela tiver um). Se nenhuma regra ou centro de custo óbvio se aplicar, retorne cost_center_id null — NÃO invente um centro de custo.`,
         response_json_schema: {
           type: 'object',
           properties: {
@@ -162,6 +170,7 @@ Para cada transação bancária do lote retorne uma decisão. "approved"=true si
                   responsible: { type: 'string' },
                   payment_method: { type: 'string' },
                   matched_by_rule_id: { type: 'string' },
+                  cost_center_id: { type: 'string', description: 'FK CostCenter, só se houver um claramente aplicável; null caso contrário' },
                   is_pf: { type: 'boolean' },
                   confidence: { type: 'number', description: '0 a 1 — confiança na decisão' },
                 },
@@ -178,25 +187,34 @@ Para cada transação bancária do lote retorne uma decisão. "approved"=true si
         const cashIds = (d.cash_transaction_ids || []).filter((id) => cashById.has(id) && !usedCashIds.has(id));
         const status = d.approved ? 'reconciled' : 'divergent';
 
+        const matchedRuleId = d.matched_by_rule_id && ruleIds.has(d.matched_by_rule_id) ? d.matched_by_rule_id : null;
+        const validCostCenterId = d.cost_center_id && costCenterIds.has(d.cost_center_id) ? d.cost_center_id : null;
+        const notesParts = [];
+        if (d.is_pf) notesParts.push('Possível despesa PF (pessoa física)');
+        if (d.approved && !validCostCenterId) notesParts.push('Sem centro de custo — revisão humana necessária');
+
         records.push({
           tenant_id: tenantId,
           bank_transaction_id: bt.id,
           cash_transaction_id: cashIds[0] || null,
+          cash_transaction_ids: cashIds,
           reconciliation_date: today,
           status,
           ai_classification: d.ai_classification || (d.approved ? 'Match validado pelo Supervisor' : 'Divergência'),
           ai_reasoning: d.ai_reasoning || 'Sem justificativa fornecida.',
-          matched_by_rule_id: d.matched_by_rule_id && ruleIds.has(d.matched_by_rule_id) ? d.matched_by_rule_id : null,
+          matched_by_rule_id: matchedRuleId,
           category: d.category || null,
           responsible: d.responsible || null,
+          cost_center_id: validCostCenterId,
           payment_method: d.payment_method || bt.type,
-          notes: d.is_pf ? 'Possível despesa PF (pessoa física)' : null,
-          confidence: typeof d.confidence === 'number' ? Math.max(0, Math.min(1, d.confidence)) : (d.matched_by_rule_id ? 1 : 0.6),
+          notes: notesParts.join('; ') || null,
+          confidence: typeof d.confidence === 'number' ? Math.max(0, Math.min(1, d.confidence)) : (matchedRuleId ? 1 : 0.6),
           engine_version: 'ai_squad_v2',
         });
         bankUpdates.push({ id: bt.id, status });
         cashIds.forEach((id) => { cashUpdates.push({ id, status }); usedCashIds.add(id); });
         decidedBankIds.add(bt.id);
+        if (matchedRuleId) ruleMatchCounts.set(matchedRuleId, (ruleMatchCounts.get(matchedRuleId) || 0) + 1);
       }
     }
 
@@ -229,6 +247,12 @@ Para cada transação bancária do lote retorne uma decisão. "approved"=true si
     if (records.length > 0) await base44.entities.ReconciledRecord.bulkCreate(records);
     if (bankUpdates.length > 0) await base44.entities.BankTransaction.bulkUpdate(bankUpdates);
     if (cashUpdates.length > 0) await base44.entities.CashTransaction.bulkUpdate(cashUpdates);
+    // Paridade de telemetria com o motor determinístico, que já incrementa match_count
+    if (ruleMatchCounts.size > 0) {
+      const ruleById = new Map(rules.map((r) => [r.id, r]));
+      const ruleUpdates = [...ruleMatchCounts.entries()].map(([id, hits]) => ({ id, match_count: (ruleById.get(id)?.match_count || 0) + hits }));
+      await base44.entities.ReconciliationRule.bulkUpdate(ruleUpdates);
+    }
 
     const reconciled = records.filter((r) => r.status === 'reconciled').length;
     const divergent = records.filter((r) => r.status === 'divergent').length;
