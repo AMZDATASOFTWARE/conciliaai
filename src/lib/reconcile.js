@@ -79,6 +79,8 @@ export function runReconciliation({ bankTxs, cashTxs, rules }) {
       payment_method: rule && cash ? cash.payment_method || "" : "",
       amount: bt.type === "debit" ? -Math.abs(bt.amount) : Math.abs(bt.amount),
       description: bt.description || "",
+      confidence: rule ? 1 : 0,
+      engine_version: "rules_v2",
     });
   }
 
@@ -104,6 +106,8 @@ export function runReconciliation({ bankTxs, cashTxs, rules }) {
       payment_method: ct.payment_method || "",
       amount: ct.amount,
       description: ct.description || "",
+      confidence: rule ? 1 : 0,
+      engine_version: "rules_v2",
     });
   }
 
