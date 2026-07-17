@@ -17,14 +17,19 @@ Deno.serve(async (req) => {
     if (!tenantId) return Response.json({ error: 'tenantId é obrigatório' }, { status: 400 });
 
     // ===== Contexto isolado do tenant =====
-    const [bankTxns, cashTxns, rules, memory, squadAgents, costCenters] = await Promise.all([
+    const [bankTxns, cashTxns, rules, memory, squadAgents, costCenters, rejectedMatches] = await Promise.all([
       base44.entities.BankTransaction.filter({ tenant_id: tenantId, status: 'pending' }, 'date', 150),
       base44.entities.CashTransaction.filter({ tenant_id: tenantId, status: 'pending' }, 'date', 300),
       base44.entities.ReconciliationRule.filter({ tenant_id: tenantId, is_active: true }, '-match_count', 200),
       base44.entities.TenantMemoryContext.filter({ tenant_id: tenantId }, '-created_date', 50),
       base44.entities.TenantAgent.filter({ tenant_id: tenantId }),
       base44.entities.CostCenter.filter({ tenant_id: tenantId, is_active: true }, 'code', 200),
+      base44.entities.RejectedMatch.filter({ tenant_id: tenantId }, '-created_date', 2000),
     ]);
+    // Memória de rejeição (Fase 7.2): pares bank+cash que um humano já marcou como
+    // errados antes. Removidos das sugestões do Analista abaixo para o Squad nunca
+    // voltar a propor a mesma combinação.
+    const rejectedPairs = new Set(rejectedMatches.filter((r) => r.cash_transaction_id).map((r) => `${r.bank_transaction_id}|${r.cash_transaction_id}`));
 
     // Squad dedicado do tenant: cada nível da pirâmide executa as instruções da SUA instância
     const squad = Object.fromEntries(squadAgents.map((a) => [a.role, a]));
@@ -123,7 +128,9 @@ ${JSON.stringify(cashList)}`,
         },
       });
 
-      const suggestions = (analystResult.suggestions || []).filter((s) => bankById.has(s.bank_transaction_id));
+      const suggestions = (analystResult.suggestions || [])
+        .filter((s) => bankById.has(s.bank_transaction_id))
+        .map((s) => ({ ...s, cash_transaction_ids: (s.cash_transaction_ids || []).filter((cid) => !rejectedPairs.has(`${s.bank_transaction_id}|${cid}`)) }));
       const unmatchedIds = (analystResult.unmatched_bank_ids || []).filter((id) => bankById.has(id));
 
       // ===== NÍVEL 2: Agente Supervisor de BPO (O Validador) =====
