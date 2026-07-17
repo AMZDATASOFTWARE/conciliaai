@@ -109,13 +109,16 @@ export default function Importacoes() {
   const { toast } = useToast();
   const ofxRef = useRef();
   const cashRef = useRef();
+  const acquirerRef = useRef();
   const [busy, setBusy] = useState(null);
   const [pendingCash, setPendingCash] = useState(null); // { rows, headers } aguardando mapeamento
+  const [pendingAcquirer, setPendingAcquirer] = useState(null); // { rows, headers } aguardando mapeamento
 
   // Listagens paginadas no servidor (10 por página)
   const query = useMemo(() => (tenantId === "all" ? {} : { tenant_id: tenantId }), [tenantId]);
   const bank = usePaginatedEntity("BankTransaction", query, "-imported_at", 10);
   const cash = usePaginatedEntity("CashTransaction", query, "-imported_at", 10);
+  const acquirer = usePaginatedEntity("AcquirerSettlement", query, "-imported_at", 10);
 
   const requireTenant = () => {
     if (tenantId === "all") {
@@ -160,25 +163,7 @@ export default function Importacoes() {
     if (!file) return;
     setBusy("cash");
     try {
-      if (file.name.toLowerCase().endsWith(".xls")) {
-        throw new Error("O formato .xls (Excel antigo) não é suportado. Salve a planilha como .xlsx ou CSV e tente novamente.");
-      }
-      if (file.name.toLowerCase().endsWith(".csv") || file.type === "text/csv") {
-        const rows = parseCSV(await file.text());
-        if (!rows.length) throw new Error("Nenhuma linha de dados encontrada no arquivo.");
-        setPendingCash({ rows, headers: Object.keys(rows[0]) });
-      } else {
-        // XLS/XLSX: primeiro lê apenas os cabeçalhos; as linhas são extraídas após confirmar o mapeamento
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        const res = await base44.integrations.Core.InvokeLLM({
-          prompt: "Liste exatamente os nomes das colunas (cabeçalhos da primeira linha) desta planilha, na ordem em que aparecem, sem alterar a grafia.",
-          file_urls: [file_url],
-          response_json_schema: { type: "object", properties: { headers: { type: "array", items: { type: "string" } } } },
-        });
-        const headers = res?.headers || [];
-        if (!headers.length) throw new Error("Não foi possível identificar os cabeçalhos da planilha.");
-        setPendingCash({ fileUrl: file_url, headers });
-      }
+      setPendingCash(await readFileHeadersOrRows(file));
     } catch (e) {
       toast({ title: "Falha na leitura do arquivo", description: e.message, variant: "destructive" });
     }
@@ -191,28 +176,7 @@ export default function Importacoes() {
     setPendingCash(null);
     setBusy("cash");
     try {
-      let rows = pending.rows;
-      if (!rows) {
-        // Excel: extrai as linhas usando os cabeçalhos identificados como esquema
-        const res = await base44.integrations.Core.ExtractDataFromUploadedFile({
-          file_url: pending.fileUrl,
-          json_schema: {
-            type: "object",
-            properties: {
-              rows: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: Object.fromEntries(pending.headers.map((h) => [h, { type: "string" }])),
-                },
-              },
-            },
-          },
-        });
-        if (res.status !== "success" || !res.output) throw new Error(res.details || "Não foi possível extrair os dados da planilha.");
-        rows = res.output.rows || (Array.isArray(res.output) ? res.output : []);
-        if (!rows.length) throw new Error("Nenhuma linha de dados extraída da planilha.");
-      }
+      const rows = await extractRowsFromFile(pending);
       const coreMapping = { core_date: mapping.date, core_amount: mapping.amount, core_description: mapping.description };
       const records = mapRows(rows, coreMapping);
       const existingKeys = await findExistingCashKeys(tenantId, records);
@@ -231,6 +195,48 @@ export default function Importacoes() {
         description: `${fresh.length} novos, ${duplicateCount} já existiam (ignorados).`,
       });
       cash.reload();
+    } catch (e) {
+      toast({ title: "Falha na importação", description: e.message, variant: "destructive" });
+    }
+    setBusy(null);
+  };
+
+  // Relatório de vendas da maquininha (Stone/Ton/Cielo/Rede) — mesma mecânica de
+  // leitura/mapeamento do caixa, mas mapeado para AcquirerSettlement (Fase 3).
+  const startAcquirerImport = async (file) => {
+    if (!file) return;
+    setBusy("acquirer");
+    try {
+      setPendingAcquirer(await readFileHeadersOrRows(file));
+    } catch (e) {
+      toast({ title: "Falha na leitura do arquivo", description: e.message, variant: "destructive" });
+    }
+    setBusy(null);
+  };
+
+  const confirmAcquirerImport = async (mapping) => {
+    const pending = pendingAcquirer;
+    setPendingAcquirer(null);
+    setBusy("acquirer");
+    try {
+      const rows = await extractRowsFromFile(pending);
+      const records = mapAcquirerRows(rows, mapping);
+      const existingKeys = await findExistingAcquirerKeys(tenantId, records);
+      const fresh = records.filter((r) => !existingKeys.has(acquirerKey(r)));
+      const duplicateCount = records.length - fresh.length;
+
+      if (fresh.length > 0) {
+        const source = await getOrCreateSource(tenantId, "acquirer_report", "Relatório Maquininha");
+        const now = new Date().toISOString();
+        await base44.entities.AcquirerSettlement.bulkCreate(
+          fresh.map((r) => ({ ...r, tenant_id: tenantId, source_id: source.id, status: "pending", imported_at: now }))
+        );
+      }
+      toast({
+        title: fresh.length ? "Relatório de maquininha importado" : "Nada de novo",
+        description: `${fresh.length} novos, ${duplicateCount} já existiam (ignorados).`,
+      });
+      acquirer.reload();
     } catch (e) {
       toast({ title: "Falha na importação", description: e.message, variant: "destructive" });
     }
