@@ -38,7 +38,8 @@
         "reconciled",
         "pending",
         "divergent",
-        "manual"
+        "manual",
+        "partial"
       ],
       "default": "pending"
     },
