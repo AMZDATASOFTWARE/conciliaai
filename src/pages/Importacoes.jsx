@@ -328,17 +328,24 @@ export default function Importacoes() {
               <EmptyState icon={FileWarning} title={empty} />
             ) : (
               <div className="divide-y divide-slate-700/60">
-                {pager.items.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between px-5 py-2.5 text-sm">
-                    <div className="min-w-0">
-                      <p className="text-slate-300 truncate">{t.description || t.payment_method || "—"}</p>
-                      <p className="text-xs text-slate-500">{t.date}</p>
+                {pager.items.map((t) => {
+                  const isAcquirer = t.sale_date !== undefined;
+                  const label = isAcquirer ? (t.card_brand || "Maquininha") : (t.description || t.payment_method || "—");
+                  const date = isAcquirer ? t.sale_date : t.date;
+                  const amount = isAcquirer ? t.gross_amount : t.amount;
+                  const isDebit = isAcquirer ? false : t.type === "debit";
+                  return (
+                    <div key={t.id} className="flex items-center justify-between px-5 py-2.5 text-sm">
+                      <div className="min-w-0">
+                        <p className="text-slate-300 truncate">{label}</p>
+                        <p className="text-xs text-slate-500">{date}{isAcquirer && t.settlement_date ? ` → liquida ${t.settlement_date}` : ""}</p>
+                      </div>
+                      <span className={`tabular-nums shrink-0 ml-4 ${isDebit ? "text-red-400" : "text-green-400"}`}>
+                        {typeof amount === "number" ? amount.toFixed(2).replace(".", ",") : ""}
+                      </span>
                     </div>
-                    <span className={`tabular-nums shrink-0 ml-4 ${t.type === "debit" ? "text-red-400" : "text-green-400"}`}>
-                      {t.amount?.toFixed(2).replace(".", ",")}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             <DataPagination page={pager.page} hasMore={pager.hasMore} onPageChange={pager.setPage} className="border-t border-slate-700" />
