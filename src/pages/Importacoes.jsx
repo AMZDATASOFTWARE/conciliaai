@@ -18,6 +18,34 @@ async function getOrCreateSource(tenantId, type, name) {
   return base44.entities.TransactionSource.create({ tenant_id: tenantId, type, name });
 }
 
+// Dedup de OFX: reimportar o mesmo extrato não pode duplicar lançamentos.
+// Busca em lotes de 100 (limite prático de $in) os FITIDs já existentes pro tenant.
+async function findExistingFitids(tenantId, fitids) {
+  const existing = new Set();
+  for (let i = 0; i < fitids.length; i += 100) {
+    const chunk = fitids.slice(i, i + 100);
+    const found = await base44.entities.BankTransaction.filter(
+      { tenant_id: tenantId, transaction_id_ofx: { $in: chunk } }, "-created_date", 500
+    );
+    found.forEach((f) => existing.add(f.transaction_id_ofx));
+  }
+  return existing;
+}
+
+// Dedup de caixa: não tem FITID, então usa uma chave composta de conteúdo
+// (data+valor+forma de pagamento+descrição) contra o que já existe no range de
+// datas do arquivo sendo importado.
+const cashKey = (r) => `${r.date}|${r.amount}|${r.payment_method || ""}|${r.description || ""}`;
+
+async function findExistingCashKeys(tenantId, records) {
+  const dates = records.map((r) => r.date).filter(Boolean).sort();
+  if (!dates.length) return new Set();
+  const existing = await base44.entities.CashTransaction.filter(
+    { tenant_id: tenantId, date: { $gte: dates[0], $lte: dates[dates.length - 1] } }, "date", 5000
+  );
+  return new Set(existing.map(cashKey));
+}
+
 export default function Importacoes() {
   const { tenantId, tenants } = useTenant();
   const { toast } = useToast();
@@ -49,12 +77,22 @@ export default function Importacoes() {
       setBusy(null);
       return;
     }
-    const source = await getOrCreateSource(tenantId, "ofx", `OFX ${file.name.replace(/\.\w+$/, "")}`);
-    const now = new Date().toISOString();
-    await base44.entities.BankTransaction.bulkCreate(
-      txs.map((t) => ({ ...t, tenant_id: tenantId, source_id: source.id, status: "pending", imported_at: now }))
-    );
-    toast({ title: "OFX importado", description: `${txs.length} transações bancárias importadas.` });
+    const fitids = txs.map((t) => t.transaction_id_ofx).filter(Boolean);
+    const existingFitids = fitids.length ? await findExistingFitids(tenantId, fitids) : new Set();
+    const fresh = txs.filter((t) => !t.transaction_id_ofx || !existingFitids.has(t.transaction_id_ofx));
+    const duplicateCount = txs.length - fresh.length;
+
+    if (fresh.length > 0) {
+      const source = await getOrCreateSource(tenantId, "ofx", `OFX ${file.name.replace(/\.\w+$/, "")}`);
+      const now = new Date().toISOString();
+      await base44.entities.BankTransaction.bulkCreate(
+        fresh.map((t) => ({ ...t, tenant_id: tenantId, source_id: source.id, status: "pending", imported_at: now }))
+      );
+    }
+    toast({
+      title: fresh.length ? "OFX importado" : "Nada de novo",
+      description: `${fresh.length} novas, ${duplicateCount} já existiam (ignoradas).`,
+    });
     setBusy(null);
     bank.reload();
   };
@@ -119,12 +157,21 @@ export default function Importacoes() {
       }
       const coreMapping = { core_date: mapping.date, core_amount: mapping.amount, core_description: mapping.description };
       const records = mapRows(rows, coreMapping);
-      const source = await getOrCreateSource(tenantId, "spreadsheet", "Planilha de Caixa");
-      const now = new Date().toISOString();
-      await base44.entities.CashTransaction.bulkCreate(
-        records.map((r) => ({ ...r, tenant_id: tenantId, source_id: source.id, status: "pending", imported_at: now }))
-      );
-      toast({ title: "Planilha importada", description: `${records.length} lançamentos de caixa importados.` });
+      const existingKeys = await findExistingCashKeys(tenantId, records);
+      const fresh = records.filter((r) => !existingKeys.has(cashKey(r)));
+      const duplicateCount = records.length - fresh.length;
+
+      if (fresh.length > 0) {
+        const source = await getOrCreateSource(tenantId, "spreadsheet", "Planilha de Caixa");
+        const now = new Date().toISOString();
+        await base44.entities.CashTransaction.bulkCreate(
+          fresh.map((r) => ({ ...r, tenant_id: tenantId, source_id: source.id, status: "pending", imported_at: now }))
+        );
+      }
+      toast({
+        title: fresh.length ? "Planilha importada" : "Nada de novo",
+        description: `${fresh.length} novos, ${duplicateCount} já existiam (ignorados).`,
+      });
       cash.reload();
     } catch (e) {
       toast({ title: "Falha na importação", description: e.message, variant: "destructive" });
