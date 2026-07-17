@@ -32,7 +32,7 @@ export function matchRule(description, rules) {
   );
 }
 
-export function runReconciliation({ bankTxs, cashTxs, rules }) {
+export function runReconciliation({ bankTxs, cashTxs, rules, rejectedPairs = new Set() }) {
   const usedCash = new Set();
   const records = [];
   const ruleHits = {};
@@ -46,7 +46,11 @@ export function runReconciliation({ bankTxs, cashTxs, rules }) {
   // ai_reasoning de um registro que continua "pending" — nunca confirma sozinho.
   for (const bt of bankTxs) {
     const cash = cashTxs.find(
-      (ct) => !usedCash.has(ct.id) && ct.date === bt.date && Math.abs(Math.abs(ct.amount) - Math.abs(bt.amount)) < 0.01
+      (ct) =>
+        !usedCash.has(ct.id) &&
+        !rejectedPairs.has(`${bt.id}|${ct.id}`) &&
+        ct.date === bt.date &&
+        Math.abs(Math.abs(ct.amount) - Math.abs(bt.amount)) < 0.01
     );
     const rule = matchRule(bt.description, rules);
     if (rule) ruleHits[rule.id] = (ruleHits[rule.id] || 0) + 1;
