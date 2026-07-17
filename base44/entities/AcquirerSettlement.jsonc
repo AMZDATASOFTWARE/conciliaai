@@ -1,0 +1,87 @@
+{
+  "name": "AcquirerSettlement",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "FK Tenant"
+    },
+    "source_id": {
+      "type": "string",
+      "description": "FK TransactionSource (type=acquirer_report)"
+    },
+    "sale_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Data da venda no maquininha"
+    },
+    "settlement_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Data em que o valor l\u00edquido cai na conta (D+1/D+2/D+30)"
+    },
+    "card_brand": {
+      "type": "string",
+      "description": "Visa, Mastercard, Elo, Maestro..."
+    },
+    "card_type": {
+      "type": "string",
+      "enum": [
+        "debit",
+        "credit",
+        "credit_installment",
+        "pix"
+      ],
+      "description": "Modalidade"
+    },
+    "installments": {
+      "type": "number",
+      "default": 1
+    },
+    "gross_amount": {
+      "type": "number",
+      "description": "Valor bruto vendido"
+    },
+    "fee_amount": {
+      "type": "number",
+      "description": "Taxa retida pela adquirente"
+    },
+    "net_amount": {
+      "type": "number",
+      "description": "Valor l\u00edquido depositado (gross - fee)"
+    },
+    "batch_reference": {
+      "type": "string",
+      "description": "N\u00famero do lote/resumo de vendas"
+    },
+    "authorization_code": {
+      "type": "string",
+      "description": "NSU/c\u00f3digo de autoriza\u00e7\u00e3o, quando dispon\u00edvel"
+    },
+    "raw_data": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Linha original do relat\u00f3rio importado"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "reconciled",
+        "divergent"
+      ],
+      "default": "pending"
+    },
+    "imported_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "sale_date",
+    "settlement_date",
+    "gross_amount",
+    "net_amount"
+  ]
+}
