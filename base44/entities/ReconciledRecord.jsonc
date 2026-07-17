@@ -12,7 +12,21 @@
     },
     "cash_transaction_id": {
       "type": "string",
-      "description": "FK CashTransaction (nullable)"
+      "description": "FK CashTransaction (nullable, legado \u2014 primeiro item de cash_transaction_ids)"
+    },
+    "cash_transaction_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "FKs CashTransaction \u2014 todos os lan\u00e7amentos de caixa somados neste registro"
+    },
+    "acquirer_settlement_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "FKs AcquirerSettlement usados no fechamento desta cadeia (3 pontas)"
     },
     "reconciliation_date": {
       "type": "string",
@@ -66,6 +80,23 @@
       "type": "string",
       "format": "date-time",
       "description": "Quando foi exportado no CSV"
+    },
+    "locked": {
+      "type": "boolean",
+      "default": false,
+      "description": "true ap\u00f3s exportado \u2014 bloqueia edi\u00e7\u00e3o/reprocessamento at\u00e9 'Reabrir Concilia\u00e7\u00e3o'"
+    },
+    "confidence": {
+      "type": "number",
+      "description": "1.0 para match determin\u00edstico (regra/3-pontas), score da IA para o resto"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Email do humano que aprovou/corrigiu manualmente, quando houve revis\u00e3o"
+    },
+    "engine_version": {
+      "type": "string",
+      "description": "Motor que gerou o registro: rules_v2, ai_squad_v2, 3way_deterministic_v1, manual"
     }
   },
   "required": [
