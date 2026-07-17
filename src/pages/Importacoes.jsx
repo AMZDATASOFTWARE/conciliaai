@@ -318,6 +318,7 @@ export default function Importacoes() {
         {[
           { title: "Últimas transações bancárias", pager: bank, empty: "Nenhum OFX importado ainda." },
           { title: "Últimos lançamentos de caixa", pager: cash, empty: "Nenhuma planilha importada ainda." },
+          { title: "Últimas liquidações da maquininha", pager: acquirer, empty: "Nenhum relatório de maquininha importado ainda." },
         ].map(({ title, pager, empty }) => (
           <div key={title} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
             <p className="text-sm font-medium text-slate-300 px-5 py-3.5 border-b border-slate-700">{title}</p>
