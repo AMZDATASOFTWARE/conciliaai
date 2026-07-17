@@ -40,7 +40,7 @@ function daysDiff(d1, d2) {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
-export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements }) {
+export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements, rejectedBankCashPairs = new Set(), rejectedBankAcquirerPairs = new Set() }) {
   const records = [];
   // Working sets usados só durante as etapas, pra não reaproveitar o mesmo
   // caixa/banco/liquidação em duas cadeias diferentes nesta execução.
@@ -103,7 +103,9 @@ export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements })
           !matchedBankIds.has(bt.id) &&
           bt.type === "credit" &&
           daysDiff(bt.date, settlementDate) <= 1 &&
-          Math.abs(bt.amount - netSum) < TOLERANCE
+          Math.abs(bt.amount - netSum) < TOLERANCE &&
+          !rejectedBankCashPairs.has(`${bt.id}|${cash.id}`) &&
+          !batchSettlements.some((s) => rejectedBankAcquirerPairs.has(`${bt.id}|${s.id}`))
       );
       if (!bank) {
         allBatchesMatched = false;
