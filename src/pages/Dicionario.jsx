@@ -5,7 +5,8 @@ import { useToast } from "@/components/ui/use-toast";
 import EmptyState from "@/components/EmptyState";
 import RuleForm from "@/components/rules/RuleForm";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Plus, Pencil, Trash2 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BookOpen, Plus, Pencil, Trash2, Check, X, Bot, User } from "lucide-react";
 
 export default function Dicionario() {
   const { tenantId, tenants } = useTenant();
@@ -15,6 +16,7 @@ export default function Dicionario() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("all"); // all | pending_review
 
   const load = async () => {
     const q = tenantId === "all" ? {} : { tenant_id: tenantId };
@@ -39,15 +41,29 @@ export default function Dicionario() {
   };
 
   const save = async (data) => {
-    if (editing) await base44.entities.ReconciliationRule.update(editing.id, data);
-    else await base44.entities.ReconciliationRule.create({ ...data, tenant_id: tenantId, match_count: 0 });
+    // Regras criadas/editadas manualmente por um humano já nascem aprovadas —
+    // só as que vem do feedback loop da IA passam por pending_review.
+    if (editing) await base44.entities.ReconciliationRule.update(editing.id, { ...data, approval_status: "approved" });
+    else await base44.entities.ReconciliationRule.create({ ...data, tenant_id: tenantId, match_count: 0, created_by: "human", approval_status: "approved" });
     setFormOpen(false);
     setEditing(null);
     load();
   };
 
+  const approve = async (r) => {
+    await base44.entities.ReconciliationRule.update(r.id, { approval_status: "approved", is_active: true });
+    load();
+  };
+
+  const reject = async (r) => {
+    await base44.entities.ReconciliationRule.update(r.id, { approval_status: "rejected", is_active: false });
+    load();
+  };
+
   const ccById = Object.fromEntries(costCenters.map((c) => [c.id, c]));
   const tenantName = (id) => tenants.find((t) => t.id === id)?.name || "—";
+  const pendingCount = rules.filter((r) => r.approval_status === "pending_review").length;
+  const visibleRules = statusFilter === "pending_review" ? rules.filter((r) => r.approval_status === "pending_review") : rules;
 
   return (
     <div className="space-y-6">
