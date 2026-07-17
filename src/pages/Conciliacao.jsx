@@ -12,7 +12,7 @@ import RecordReviewDialog from "@/components/reconciliation/RecordReviewDialog";
 import AuditReportDialog from "@/components/conciliacao/AuditReportDialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GitMerge, Play, Eye, Check, AlertTriangle, Sparkles, Brain, Pencil } from "lucide-react";
+import { GitMerge, Play, Eye, Check, AlertTriangle, Sparkles, Brain, Pencil, Lock } from "lucide-react";
 
 export default function Conciliacao() {
   const { tenantId } = useTenant();
@@ -52,11 +52,24 @@ export default function Conciliacao() {
       return;
     }
     setRunning(true);
-    const [bankTxs, cashTxs, tenantRules] = await Promise.all([
+    const [bankTxsRaw, cashTxs, tenantRules] = await Promise.all([
       base44.entities.BankTransaction.filter({ tenant_id: tenantId, status: "pending" }, "date", 500),
       base44.entities.CashTransaction.filter({ tenant_id: tenantId, status: "pending" }, "date", 500),
       base44.entities.ReconciliationRule.filter({ tenant_id: tenantId, is_active: true }, "-created_date", 500),
     ]);
+    // Idempotência: não reprocessa transações que já têm um ReconciledRecord ativo
+    // (não-divergente) — evita duplicar registros se alguém rodar duas vezes seguidas.
+    const bankTxs = bankTxsRaw.length
+      ? await (async () => {
+          const existing = await base44.entities.ReconciledRecord.filter(
+            { tenant_id: tenantId, bank_transaction_id: { $in: bankTxsRaw.map((t) => t.id) }, status: { $ne: "divergent" } },
+            "-created_date",
+            bankTxsRaw.length
+          );
+          const resolved = new Set(existing.map((r) => r.bank_transaction_id));
+          return bankTxsRaw.filter((t) => !resolved.has(t.id));
+        })()
+      : bankTxsRaw;
     if (bankTxs.length === 0 && cashTxs.length === 0) {
       toast({ title: "Nada a conciliar", description: "Não há transações pendentes para este cliente." });
       setRunning(false);
@@ -107,14 +120,35 @@ export default function Conciliacao() {
   };
 
   const setStatus = async (rec, status) => {
+    if (rec.locked) {
+      toast({ title: "Registro travado", description: "Já foi exportado para a Conta Azul. Use \"Reabrir Conciliação\" para editar.", variant: "destructive" });
+      return;
+    }
     await base44.entities.ReconciledRecord.update(rec.id, { status });
     setDetail(null);
     reload();
   };
 
   const handleReviewSave = async (rec, data) => {
+    if (rec.locked) {
+      toast({ title: "Registro travado", description: "Já foi exportado para a Conta Azul. Use \"Reabrir Conciliação\" para editar.", variant: "destructive" });
+      return;
+    }
     await base44.entities.ReconciledRecord.update(rec.id, data);
     setReview(null);
+    reload();
+  };
+
+  const reopenRecord = async (rec) => {
+    if (rec.locked) {
+      toast({ title: "Não é possível reabrir", description: "Este registro já foi exportado para a Conta Azul e está travado.", variant: "destructive" });
+      return;
+    }
+    await base44.entities.ReconciledRecord.update(rec.id, { status: "pending" });
+    if (rec.bank_transaction_id) await base44.entities.BankTransaction.update(rec.bank_transaction_id, { status: "pending" });
+    if (rec.cash_transaction_id) await base44.entities.CashTransaction.update(rec.cash_transaction_id, { status: "pending" });
+    toast({ title: "Conciliação reaberta", description: "O lançamento voltou a ficar pendente e pode ser reprocessado." });
+    setDetail(null);
     reload();
   };
 
@@ -186,7 +220,12 @@ export default function Conciliacao() {
                       <span className="text-slate-600 text-xs">—</span>
                     )}
                   </td>
-                  <td className="px-5 py-2.5"><StatusBadge status={r.status} /></td>
+                  <td className="px-5 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <StatusBadge status={r.status} />
+                      {r.locked && <Lock className="w-3 h-3 text-slate-500" aria-label="Travado (exportado)" />}
+                    </div>
+                  </td>
                   <td className="px-5 py-2.5">
                     <div className="flex justify-end gap-1">
                       <Button size="sm" variant="ghost" onClick={() => setDetail(r)} className="text-slate-400 hover:text-blue-400" title="Ver raciocínio da IA">
@@ -216,7 +255,7 @@ export default function Conciliacao() {
       </div>
 
       {detail && (
-        <RecordDetail record={detail} rule={rulesById[detail.matched_by_rule_id]} onClose={() => setDetail(null)} onSetStatus={setStatus} />
+        <RecordDetail record={detail} rule={rulesById[detail.matched_by_rule_id]} onClose={() => setDetail(null)} onSetStatus={setStatus} onReopen={reopenRecord} />
       )}
 
       {review && (
