@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useTenant } from "@/lib/TenantContext";
 import { runReconciliation } from "@/lib/reconcile";
+import { run3WayReconciliation } from "@/lib/reconcile3way";
 import { useToast } from "@/components/ui/use-toast";
 import { usePaginatedEntity } from "@/hooks/usePaginatedEntity";
 import DataPagination from "@/components/DataPagination";
@@ -21,6 +22,7 @@ export default function Conciliacao() {
   const [costCenters, setCostCenters] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [running, setRunning] = useState(false);
+  const [threeWayRunning, setThreeWayRunning] = useState(false);
   const [aiRunning, setAiRunning] = useState(false);
   const [auditResult, setAuditResult] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -98,6 +100,55 @@ export default function Conciliacao() {
     toast({ title: "Conciliação concluída", description: `${newRecords.length} registros gerados.` });
     setRunning(false);
     loadLookups();
+    reload();
+  };
+
+  const runThreeWay = async () => {
+    if (tenantId === "all") {
+      toast({ title: "Selecione um cliente", description: "Escolha o tenant ativo na barra lateral para executar a conciliação.", variant: "destructive" });
+      return;
+    }
+    setThreeWayRunning(true);
+    const [bankTxsRaw, cashTxsRaw, acquirerRaw] = await Promise.all([
+      base44.entities.BankTransaction.filter({ tenant_id: tenantId, status: "pending" }, "date", 5000),
+      base44.entities.CashTransaction.filter({ tenant_id: tenantId, status: "pending" }, "date", 5000),
+      base44.entities.AcquirerSettlement.filter({ tenant_id: tenantId, status: "pending" }, "sale_date", 5000),
+    ]);
+    if (acquirerRaw.length === 0) {
+      toast({ title: "Nada a conciliar", description: "Não há relatório de maquininha pendente para este cliente — importe um na tela de Importações primeiro." });
+      setThreeWayRunning(false);
+      return;
+    }
+    // Idempotência: não reprocessa transações bancárias que já têm ReconciledRecord ativo
+    const existingActive = bankTxsRaw.length
+      ? await base44.entities.ReconciledRecord.filter(
+          { tenant_id: tenantId, bank_transaction_id: { $in: bankTxsRaw.map((t) => t.id) }, status: { $ne: "divergent" } },
+          "-created_date",
+          bankTxsRaw.length
+        )
+      : [];
+    const resolvedBankIds = new Set(existingActive.map((r) => r.bank_transaction_id));
+    const bankTxs = bankTxsRaw.filter((t) => !resolvedBankIds.has(t.id));
+
+    const { records: newRecords, usedBankIds, usedCashIds, usedAcquirerIds } = run3WayReconciliation({
+      bankTxs,
+      cashTxs: cashTxsRaw,
+      acquirerSettlements: acquirerRaw,
+    });
+
+    if (newRecords.length > 0) {
+      await base44.entities.ReconciledRecord.bulkCreate(newRecords);
+      await base44.entities.BankTransaction.bulkUpdate([...usedBankIds].map((id) => ({ id, status: "reconciled" })));
+      await base44.entities.CashTransaction.bulkUpdate([...usedCashIds].map((id) => ({ id, status: "reconciled" })));
+      await base44.entities.AcquirerSettlement.bulkUpdate([...usedAcquirerIds].map((id) => ({ id, status: "reconciled" })));
+    }
+    toast({
+      title: newRecords.length ? "Conciliação Maquininha concluída" : "Nenhuma cadeia fechou",
+      description: newRecords.length
+        ? `${newRecords.length} depósito(s) bancário(s) conciliado(s) via caixa → maquininha → banco.`
+        : "Nenhuma cadeia caixa→maquininha→banco fechou 100% nesta rodada — os pendentes seguem para revisão (regras ou Squad de IA).",
+    });
+    setThreeWayRunning(false);
     reload();
   };
 
