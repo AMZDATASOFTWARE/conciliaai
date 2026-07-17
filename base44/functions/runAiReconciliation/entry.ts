@@ -34,7 +34,23 @@ Deno.serve(async (req) => {
       return Response.json({ analyzed: 0, reconciled: 0, divergent: 0, report: 'Nenhuma transação bancária pendente para este cliente.' });
     }
 
-    const bankById = new Map(bankTxns.map((t) => [t.id, t]));
+    // Idempotência (defesa em profundidade): mesmo que uma BankTransaction tenha sido
+    // resetada para 'pending' manualmente, não reprocessar se já existe um
+    // ReconciledRecord ATIVO (não-divergente) para ela — evita duplicar registros.
+    // O único jeito de reabrir de verdade é a ação explícita "Reabrir Conciliação" na UI.
+    const existingActive = await base44.entities.ReconciledRecord.filter(
+      { tenant_id: tenantId, bank_transaction_id: { $in: bankTxns.map((t) => t.id) }, status: { $ne: 'divergent' } },
+      '-created_date',
+      bankTxns.length
+    );
+    const alreadyResolvedIds = new Set(existingActive.map((r) => r.bank_transaction_id));
+    const bankTxnsToProcess = bankTxns.filter((t) => !alreadyResolvedIds.has(t.id));
+
+    if (bankTxnsToProcess.length === 0) {
+      return Response.json({ analyzed: 0, reconciled: 0, divergent: 0, report: `Todas as ${bankTxns.length} transações buscadas já têm conciliação ativa — nada novo a processar.` });
+    }
+
+    const bankById = new Map(bankTxnsToProcess.map((t) => [t.id, t]));
     const cashById = new Map(cashTxns.map((t) => [t.id, t]));
     const ruleIds = new Set(rules.map((r) => r.id));
     const today = new Date().toISOString().slice(0, 10);
@@ -47,8 +63,8 @@ Deno.serve(async (req) => {
     // o resto.
     const BATCH_SIZE = 40;
     const bankBatches = [];
-    for (let i = 0; i < bankTxns.length; i += BATCH_SIZE) {
-      bankBatches.push(bankTxns.slice(i, i + BATCH_SIZE));
+    for (let i = 0; i < bankTxnsToProcess.length; i += BATCH_SIZE) {
+      bankBatches.push(bankTxnsToProcess.slice(i, i + BATCH_SIZE));
     }
 
     const records = [];
@@ -147,6 +163,7 @@ Para cada transação bancária do lote retorne uma decisão. "approved"=true si
                   payment_method: { type: 'string' },
                   matched_by_rule_id: { type: 'string' },
                   is_pf: { type: 'boolean' },
+                  confidence: { type: 'number', description: '0 a 1 — confiança na decisão' },
                 },
                 required: ['bank_transaction_id', 'approved', 'ai_reasoning'],
               },
@@ -174,6 +191,8 @@ Para cada transação bancária do lote retorne uma decisão. "approved"=true si
           responsible: d.responsible || null,
           payment_method: d.payment_method || bt.type,
           notes: d.is_pf ? 'Possível despesa PF (pessoa física)' : null,
+          confidence: typeof d.confidence === 'number' ? Math.max(0, Math.min(1, d.confidence)) : (d.matched_by_rule_id ? 1 : 0.6),
+          engine_version: 'ai_squad_v2',
         });
         bankUpdates.push({ id: bt.id, status });
         cashIds.forEach((id) => { cashUpdates.push({ id, status }); usedCashIds.add(id); });
@@ -201,6 +220,8 @@ Para cada transação bancária do lote retorne uma decisão. "approved"=true si
         responsible: null,
         payment_method: bt.type,
         notes: null,
+        confidence: 0,
+        engine_version: 'ai_squad_v2',
       });
       bankUpdates.push({ id: bt.id, status: 'divergent' });
     }
@@ -232,7 +253,7 @@ LOTE PROCESSADO (${records.length} registros — ${reconciled} conciliados, ${di
 ${JSON.stringify(records.map((r) => ({ status: r.status, classification: r.ai_classification, reasoning: r.ai_reasoning, category: r.category, responsible: r.responsible, notes: r.notes, amount: bankById.get(r.bank_transaction_id)?.amount, description: bankById.get(r.bank_transaction_id)?.description })))}`,
     });
 
-    return Response.json({ analyzed: bankTxns.length, reconciled, divergent, report });
+    return Response.json({ analyzed: bankTxnsToProcess.length, reconciled, divergent, report, skipped_already_resolved: alreadyResolvedIds.size });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
