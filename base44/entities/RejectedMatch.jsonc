@@ -1,0 +1,38 @@
+{
+  "name": "RejectedMatch",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "FK Tenant"
+    },
+    "bank_transaction_id": {
+      "type": "string",
+      "description": "FK BankTransaction"
+    },
+    "cash_transaction_id": {
+      "type": "string",
+      "description": "FK CashTransaction (nullable \u2014 par rejeitado do lado do caixa)"
+    },
+    "acquirer_settlement_id": {
+      "type": "string",
+      "description": "FK AcquirerSettlement (nullable \u2014 par rejeitado do lado da maquininha)"
+    },
+    "rejected_by": {
+      "type": "string",
+      "description": "Email do humano que rejeitou o match"
+    },
+    "rejected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Motivo/observa\u00e7\u00e3o da rejei\u00e7\u00e3o, quando informado"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "bank_transaction_id"
+  ]
+}
