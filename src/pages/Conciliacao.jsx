@@ -197,7 +197,13 @@ export default function Conciliacao() {
     }
     await base44.entities.ReconciledRecord.update(rec.id, { status: "pending" });
     if (rec.bank_transaction_id) await base44.entities.BankTransaction.update(rec.bank_transaction_id, { status: "pending" });
-    if (rec.cash_transaction_id) await base44.entities.CashTransaction.update(rec.cash_transaction_id, { status: "pending" });
+    // Reabre TODOS os lançamentos de caixa envolvidos (não só o primeiro) e as
+    // liquidações de maquininha da cadeia, quando existirem (motor de 3 pontas).
+    const cashIds = rec.cash_transaction_ids?.length ? rec.cash_transaction_ids : (rec.cash_transaction_id ? [rec.cash_transaction_id] : []);
+    await Promise.all(cashIds.map((id) => base44.entities.CashTransaction.update(id, { status: "pending" })));
+    if (rec.acquirer_settlement_ids?.length) {
+      await Promise.all(rec.acquirer_settlement_ids.map((id) => base44.entities.AcquirerSettlement.update(id, { status: "pending" })));
+    }
     toast({ title: "Conciliação reaberta", description: "O lançamento voltou a ficar pendente e pode ser reprocessado." });
     setDetail(null);
     reload();
