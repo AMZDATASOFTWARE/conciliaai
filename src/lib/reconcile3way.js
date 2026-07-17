@@ -42,9 +42,14 @@ const round2 = (n) => Math.round(n * 100) / 100;
 
 export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements }) {
   const records = [];
-  const usedBankIds = new Set();
+  // usedCashIds é usado só durante a Etapa 1 pra não oferecer o mesmo lançamento
+  // de caixa a dois grupos da maquininha nesta execução. NÃO reflete o resultado
+  // final — uma cadeia pode reservar um caixa na Etapa 1 e falhar na Etapa 2
+  // (banco não bate), nesse caso o caixa fica "reservado" aqui mas SEM registro
+  // criado. Os sets devolvidos no final são recalculados a partir de `records`
+  // para nunca marcar como reconciliado algo que na verdade não entrou em
+  // nenhum ReconciledRecord.
   const usedCashIds = new Set();
-  const usedAcquirerIds = new Set();
 
   // ===== Etapa 1: Caixa <-> Maquininha (bruto, mesmo dia) =====
   // Agrupa liquidações por dia da venda + modalidade (débito/crédito/pix), soma o
@@ -136,5 +141,12 @@ export function run3WayReconciliation({ bankTxs, cashTxs, acquirerSettlements })
     }
   }
 
-  return { records, usedBankIds, usedCashIds, usedAcquirerIds };
+  // Deriva os sets finais só do que de fato virou registro — evita marcar como
+  // "reconciled" um caixa/banco/liquidação que ficou reservado numa cadeia que
+  // acabou não fechando.
+  const finalBankIds = new Set(records.map((r) => r.bank_transaction_id));
+  const finalCashIds = new Set(records.flatMap((r) => r.cash_transaction_ids));
+  const finalAcquirerIds = new Set(records.flatMap((r) => r.acquirer_settlement_ids));
+
+  return { records, usedBankIds: finalBankIds, usedCashIds: finalCashIds, usedAcquirerIds: finalAcquirerIds };
 }
