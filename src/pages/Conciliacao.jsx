@@ -278,6 +278,7 @@ export default function Conciliacao() {
           <TabsTrigger value="all">Todos</TabsTrigger>
           <TabsTrigger value="reconciled">Conciliados</TabsTrigger>
           <TabsTrigger value="pending">Pendentes</TabsTrigger>
+          <TabsTrigger value="partial">Parciais</TabsTrigger>
           <TabsTrigger value="divergent">Divergentes</TabsTrigger>
           <TabsTrigger value="manual">Manuais</TabsTrigger>
         </TabsList>
