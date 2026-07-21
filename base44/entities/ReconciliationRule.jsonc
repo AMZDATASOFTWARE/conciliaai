@@ -10,6 +10,13 @@
       "type": "string",
       "description": "Palavra-chave a buscar na descri\u00e7\u00e3o, ex: WILSON DE CASSIO"
     },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Varia\u00e7\u00f5es/apelidos que tamb\u00e9m devem casar (ex.: keyword=\"DAVID LEONARDO BRAGA PANTOJA\", aliases=[\"LEO\",\"L\u00c9O\"])"
+    },
     "map_to": {
       "type": "string",
       "description": "Nome mapeado, ex: Jhennifer"
@@ -38,7 +45,7 @@
     },
     "created_by": {
       "type": "string",
-      "description": "Origem da regra: 'human' ou 'system_feedback_loop'"
+      "description": "Origem da regra: 'human', 'system_feedback_loop', ou 'super_agente'"
     },
     "approval_status": {
       "type": "string",
@@ -53,7 +60,7 @@
     "metadata": {
       "type": "object",
       "additionalProperties": true,
-      "description": "Dados de auditoria: descri\u00e7\u00e3o original, categoria antiga/nova, record de origem"
+      "description": "Dados de auditoria: descri\u00e7\u00e3o original, categoria antiga/nova, record de origem, flag_risco (ex.: pagamento a terceiro em nome de outra pessoa)"
     }
   },
   "required": [
