@@ -39,9 +39,11 @@
         "pending",
         "divergent",
         "manual",
-        "partial"
+        "partial",
+        "already_reconciled"
       ],
-      "default": "pending"
+      "default": "pending",
+      "description": "already_reconciled = descartado no in\u00edcio do motor por j\u00e1 bater com conta ACQUITTED de upload anterior (anti-duplicidade, regra do Super Agente)"
     },
     "ai_classification": {
       "type": "string",
@@ -68,7 +70,42 @@
     },
     "cost_center_id": {
       "type": "string",
-      "description": "FK CostCenter"
+      "description": "FK CostCenter \u2014 principal/legado quando h\u00e1 rateio (ver cost_center_allocations)"
+    },
+    "cost_center_allocations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "cost_center_id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "percentage": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Rateio real de uma conta em m\u00faltiplos centros de custo/categorias (achado do Super Agente no Arcanum: 43 contas com rateio real)"
+    },
+    "match_layer": {
+      "type": "string",
+      "enum": [
+        "exato",
+        "juros_multa",
+        "rateio_valor",
+        "rateio_centro_custo"
+      ],
+      "description": "Qual das camadas do motor de 3 camadas (Super Agente) fechou este match"
+    },
+    "interest_penalty_amount": {
+      "type": "number",
+      "description": "Diferen\u00e7a entre valor pago e valor da conta quando dentro da toler\u00e2ncia de juros/multa (at\u00e9 10%)"
     },
     "payment_method": {
       "type": "string"
@@ -97,7 +134,7 @@
     },
     "engine_version": {
       "type": "string",
-      "description": "Motor que gerou o registro: rules_v2, ai_squad_v2, 3way_deterministic_v1, manual"
+      "description": "Motor que gerou o registro: rules_v2, ai_squad_v2, 3way_deterministic_v1, manual, super_agente_conciliacao_bancaria"
     }
   },
   "required": [
