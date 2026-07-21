@@ -7,6 +7,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { usePaginatedEntity } from "@/hooks/usePaginatedEntity";
 import DataPagination from "@/components/DataPagination";
 import StatusBadge from "@/components/StatusBadge";
+import MatchLayerBadge from "@/components/conciliacao/MatchLayerBadge";
 import EmptyState from "@/components/EmptyState";
 import RecordDetail from "@/components/conciliacao/RecordDetail";
 import RecordReviewDialog from "@/components/reconciliation/RecordReviewDialog";
@@ -14,7 +15,7 @@ import { feedbackLoopService } from "@/lib/ai/feedbackLoopService";
 import AuditReportDialog from "@/components/conciliacao/AuditReportDialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GitMerge, Play, Eye, Check, AlertTriangle, Sparkles, Brain, Pencil, Lock, CreditCard } from "lucide-react";
+import { GitMerge, Play, Eye, Check, AlertTriangle, Sparkles, Brain, Pencil, Lock, CreditCard, Layers } from "lucide-react";
 
 export default function Conciliacao() {
   const { tenantId } = useTenant();
@@ -281,6 +282,7 @@ export default function Conciliacao() {
           <TabsTrigger value="partial">Parciais</TabsTrigger>
           <TabsTrigger value="divergent">Divergentes</TabsTrigger>
           <TabsTrigger value="manual">Manuais</TabsTrigger>
+          <TabsTrigger value="already_reconciled">Já conciliados</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -298,13 +300,16 @@ export default function Conciliacao() {
                 <th className="px-5 py-3 font-medium text-right">Valor</th>
                 <th className="px-5 py-3 font-medium">Categoria</th>
                 <th className="px-5 py-3 font-medium">Responsável</th>
+                <th className="px-5 py-3 font-medium">Match</th>
                 <th className="px-5 py-3 font-medium">Raciocínio IA</th>
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/60">
-              {records.map((r) => (
+              {records.map((r) => {
+                const hasRateio = r.cost_center_allocations?.length > 1;
+                return (
                 <tr key={r.id} className="hover:bg-slate-700/20">
                   <td className="px-5 py-2.5 text-slate-400 whitespace-nowrap">{r.reconciliation_date}</td>
                   <td className="px-5 py-2.5 text-slate-300 max-w-[240px] truncate">{r.description}</td>
@@ -313,6 +318,21 @@ export default function Conciliacao() {
                   </td>
                   <td className="px-5 py-2.5 text-slate-400">{r.category || "—"}</td>
                   <td className="px-5 py-2.5 text-slate-400">{r.responsible || "—"}</td>
+                  <td className="px-5 py-2.5">
+                    <div className="flex flex-col gap-1 items-start">
+                      <MatchLayerBadge matchLayer={r.match_layer} />
+                      {typeof r.interest_penalty_amount === "number" && r.interest_penalty_amount !== 0 && (
+                        <span className="text-[11px] text-orange-400/80" title="Diferença entre valor pago e valor da conta, dentro da tolerância de juros/multa">
+                          +R$ {r.interest_penalty_amount.toFixed(2).replace(".", ",")} juros/multa
+                        </span>
+                      )}
+                      {hasRateio && (
+                        <span className="flex items-center gap-1 text-[11px] text-cyan-400/80" title={r.cost_center_allocations.map((a) => `${a.category || ""} (${a.cost_center_id || "—"}): R$ ${a.amount?.toFixed(2)}`).join(" · ")}>
+                          <Layers className="w-3 h-3" /> {r.cost_center_allocations.length} centros
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-5 py-2.5 max-w-[220px]">
                     {r.ai_reasoning ? (
                       <span className="flex items-center gap-1.5 text-xs text-blue-300/80 cursor-help" title={r.ai_reasoning}>
@@ -350,7 +370,7 @@ export default function Conciliacao() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         )}
